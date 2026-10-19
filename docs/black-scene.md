@@ -20,6 +20,18 @@ proves it; the capture evidence lives in `out/evidence/black-scene/`
 > say-so. Diagnose with `XBE_PERF=1`, `XBE_CAPTURE_DIR` +
 > `XBE_VK_CAPTURE_EVERY=N`, `XBE_VK_DEBUG_DRAW=1` and the capture dumps
 > instead — that is how everything below was proven.
+>
+> **Validation was therefore not run for this fix** — by decision, not
+> oversight: the experiment that would test whether the layer is safe now
+> has a hard freeze of the owner's live workstation as its failure mode.
+> What is and is not established: both frozen runs had the layer loaded
+> *and* periodic captures every 300 presents, on the 8192-set build with
+> the (since removed) second-sample probe; layer-loaded runs of the older
+> 2048-set build completed normally (`house4`, and the 06:36 run copied to
+> `before_h5/house5.log`, `Exit (0)` after 198 s). Which factor triggers
+> the freeze — the layer, the capture, or the two together — is **not
+> established**. The only validation output on record for the household
+> is therefore the pre-fix `house4` run quoted below.
 
 ## The symptom
 
@@ -205,3 +217,63 @@ sample of the same target inside `PeriodicCapture`, plus its extra
 present-log fields) was temporary diagnostic scaffolding and has been
 removed (SDK `e809cd4`); the BMPs and logs it produced remain in
 `out/evidence/black-scene/`.
+
+## What D3 asked, answered
+
+- **Shaders or pipelines that fail to build in the household: 0 and 0.**
+  `before_h5/house5.log` splits its 264 dropped draws as shader 0, pso 0,
+  set 264, and no household run logs `shader compile failed` or
+  `pipeline creation failed` (`before_h5/house5.log`,
+  `out/shots/bsf_house1.log`, `out/shots/bsf_final.log`).
+- **No compile is ever "in flight".** `CompileModule`
+  (`vkCreateShaderModule`) and `EnsurePipeline`
+  (`vkCreateGraphicsPipelines`) are synchronous, so a draw can only lack
+  a pipeline if its creation failed, which did not happen. The D3D12
+  backend's "record the draw into its own command list and chain it" is
+  therefore not needed here: the dropped draws were descriptor-set
+  failures, and `EnsureSetRoom` now submits a full segment before the
+  allocation instead of letting it fail.
+- **Which draws were dropped**: by construction, every allocation after
+  the pool's 2048th set fails, so it is the tail of each frame — the last
+  draws, then the present blit. Observed accordingly:
+  `before_h5/front_09000_host.bmp` shows the club and the Sims but **no
+  HUD**; `after_house3/front_04500_host.bmp` has the clock, the
+  simoleons, the mood wheel and the dialogue card. In both host
+  captures the Sims are textured: the black-silhouette Sims noted in the
+  earlier playtest were not seen in these captures, so whether they
+  shared this cause is not established.
+
+## Final check on the committed build (SDK `e809cd4`)
+
+Both builds report no work to do at `e809cd4` (the binaries were built
+from exactly the committed source). No validation layer in any run below.
+
+- **Household, captures off** (`out/shots/bsf_final.log`, verbose build,
+  same `SIMSBO_STEP` drive): **2176 draws/frame, 0 skipped, 0
+  `nopipeline` (shader 0 pso 0 set 0), `stalealloc` 0**, 113k verts,
+  14.2 MB upload per frame, and no `no descriptor set`, `blit dropped`,
+  `depth copy skipped` or `vkAllocateDescriptorSets failed` line. Its
+  household screenshot shows the owner's desktop windows in front of the
+  game (the machine was in use), so the on-screen proof for this binary
+  is `out/shots/allocafter_92s.png`.
+- **Household, captures on** (`out/shots/bsf_house1.log`, the fix without
+  the later counter): 2174 draws/frame, 0 skipped, 0 `nopipeline`. The
+  two reads that used to disagree now agree in the same `Present`:
+  `out/build/linux-verbose/cap_bsf_house1/front_04500.bmp` (guest size,
+  through `ShrinkImage`/`BlitInto`) mean **0.3006**, and
+  `front_04500_host.bmp` (full-resolution copy) mean **0.3006** — the
+  household with its HUD in both. (That run's screenshots were covered by
+  the duplicate session's game window, see `COORDINATION.txt`.)
+- **Intro movie**: `out/shots/allocintro_20s.png` (this binary) against
+  the reference `out/shots/final_20s.png`: the non-black picture
+  rectangle over rows 0..1400 (`magick … -fuzz 4% -format %@`) is
+  **1918x1398+762+2 in both** — whole, pillarboxed 4:3, no crop, no
+  stretch. A different movie frame (the movie is timed video), the same
+  geometry.
+
+Reproduce: `SIMSBO_STEP=<file> XBE_PERF=1 XBE_MUTE=1
+./out/build/linux-verbose/SimsBustinOut`, write the tokens START, START,
+A, A, RIGHTx3, A, A to the file about 4 s apart starting ~14 s after
+launch (writing `NONE` between them); the household is up ~30 s later.
+Add `XBE_CAPTURE_DIR=cap_<tag> XBE_VK_CAPTURE_EVERY=300` for the
+`front_NNNNN.bmp` dumps — mindful of the warning at the top.
