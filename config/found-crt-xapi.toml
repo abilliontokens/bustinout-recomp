@@ -1,0 +1,23 @@
+# _CIacos: 0x14-byte register wrapper (sub esp,0Ch; fst [esp]; call checker 0x22363C; call body 0x21EAF1; add esp,0Ch; retn 0), exactly the 5849 _CI len 0x14 and its callee cluster [0x16 checker, 0xAE body]; 14 callers in game .text
+_CIacos = 0x21EAD4
+
+# crt_acos: 0xAE-byte body (0x21EAF1..0x21EB9F, pop edx/retn) matching 5849 len 0xAE; push edx/fstcw, cmp eax,3FF00000h and and ecx,80000000h (k=[0x3FF00000,0x80000000]); fld1/fadd/fld1/fsub/fmulp/fsqrt/fxch/fpatan computes acos via atan2(sqrt(1-x^2),x), and its domain-error path loads the string "acos" (0x30D5E8); sits 0x1D after _CIacos with only the 9-byte lea edx,[esp+4]/call 0x2235F9 C-entry stub (0x21EAE8) between them
+crt_acos = 0x21EAF1
+
+# _CIasin: 0x14-byte register wrapper identical in shape to _CIacos (sub esp,0Ch; fst [esp]; call checker 0x22363C; call body 0x220879; add esp,0Ch; retn 0), matching 5849 _CI len 0x14 and callee cluster [0x16, 0xAE]; called from game .text (0x11EA90, 0x151E00)
+_CIasin = 0x22085C
+
+# crt_asin: 0xAE-byte body (0x220879..0x220927, pop edx/retn) matching 5849 len 0xAE; push edx/fstcw, cmp eax,3FF00000h and and ecx,80000000h (k=[0x3FF00000,0x80000000]); fld1/fadd/fld1/fsub/fmulp/fsqrt/fpatan (no fxch, unlike acos) computes asin via atan(sqrt(1-x^2) form), and its domain-error path loads the string "asin" (0x30D650); sits 0x1D after _CIasin with only the 9-byte lea edx,[esp+4]/call 0x2235F9 C-entry stub (0x220870) between them, in the same LIBCMT cluster as crt_pow (0x220A24)
+crt_asin = 0x220879
+
+# XInitDevices: 0x79-byte XPP body matching 5849 len 0x79 and retn 8 (two stack args, forwarded to first callee); its five direct callees have exactly the 5849 callee-length cluster in order [0x5A (0x2DCADF), 0x149 (0x2DA4F5), 0xC (0x2DA6E1), 0xA3 (0x2DA63E), 0x42 (0x2DA6ED)]; it walks the device-descriptor pointer table 0x2D9CF4..0x2D9D04 beside the proven XPP_GamepadType 0x2D9D10/XPP_MemoryUnitType 0x2D9DC0 and is reached at boot via the jmp thunk 0x2DB05E from the title startup path (sub_126920)
+XInitDevices = 0x2DA1B3
+
+# UNRESOLVED
+# crt_atan: no standalone body found. Best lead: an atan body (5849 len 0x82) would need fpatan outside acos/asin, but a full .text x87 census shows fpatan only inside crt_acos/crt_asin and game code; no 0x82-byte function with the shared CRT callee cluster [0xD,0x2A,0x19,0xD,0x3C] exists in the LIBCMT cluster (0x21E000-0x228000). Likely not linked (calls inlined by the compiler); do not guess.
+# crt_cos: no standalone body found. Best lead: a cos body (5849 len 0x91) would contain fcos, but fcos in .text occurs only inlined in game functions and SSE-era game code, never in a 0x91-byte LIBCMT body with the push-edx/fstcw prologue (that prologue occurs only at crt_acos, crt_asin and crt_pow). Likely not linked; do not guess.
+# crt_log: no standalone body found. Best lead: a log body (5849 len 0xB8, k=[0x7FF00000,0x80000000 x3]) would contain fyl2x with fldln2; the only fldln2/fyl2x sequences in the CRT cluster are internal blocks of the crt_pow helper at 0x226C72/0x226CA5 (reached by fallthrough inside _powhlp, no function entry, no retn), not a callable log entry. Likely not linked; do not guess.
+# crt_log10: no standalone body found. Best lead: a log10 body (5849 len 0xB8) would contain fldlg2/fyl2x; the sole fldlg2 in .text is at 0x226CA1, an internal branch of the crt_pow helper sharing the fyl2x at 0x226CAD, with no function boundary or caller as log10. Likely not linked; do not guess.
+# crt_sin: no standalone body found. Best lead: a sin body (5849 len 0x91) would contain fsin, but fsin in .text occurs only inlined in game functions (e.g. the C++ value-type cluster at 0x11E4F0) and in crt_pow's helper; no 0x91-byte LIBCMT body with the CRT prologue/callee cluster exists. The sibling 5849 port also left crt_sin at 0, consistent with it not being linked. Do not guess.
+# crt_sqrt: no standalone body found. Best lead: a sqrt body (5849 len 0x9D, k=[0x7FF00000,0x80000000,0x80000000]) would be a lone fsqrt with exponent/sign checks; every fsqrt in the CRT cluster belongs to crt_acos/crt_asin, and all other fsqrt sites are inlined in game code. Likely not linked (sqrt is a compiler intrinsic here); do not guess.
+# crt_tan: no standalone body found. Best lead: a tan body (5849 len 0x95) would contain fptan; fptan occurs only five times in the whole image, all inlined in game functions (0xA33A4, 0xA6ACB, 0xD0E45, 0x11F156, 0x12C7EA), none in a LIBCMT body. Likely not linked; do not guess.

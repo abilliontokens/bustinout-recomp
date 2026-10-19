@@ -1,0 +1,30 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "The Sims: Bustin' Out",
+  "system": "Xbox",
+  "type": "recomp",
+  "original": {
+    "region": "USA",
+    "serial": "0x45410043",
+    "sha1": "6feea04a12fb134253abe2b5662da634d0048232"
+  },
+  "project": "The Sims: Bustin' Out Recompiled",
+  "status": "in-progress",
+  "targets": ["Windows", "Linux"],
+  "toolchain": "XboxXBERecomp",
+  "approach": "Static recompilation of the retail XBE to C++; XDK HLE with a Direct3D 12 renderer and XAudio2 on Windows, and a native Vulkan renderer with SDL3 on Linux (no Wine)",
+  "maintainers": [
+    { "name": "abilliontokens", "link": "https://github.com/abilliontokens" }
+  ],
+  "links": [
+    { "label": "SDK fork", "url": "https://github.com/abilliontokens/XboxXBERecomp" }
+  ],
+  "help": [
+    "Bootstrapping XDK 5558 signatures: this XBE was built with XDK 5558, but the SDK only ships sdk/xdk/5849",
+    "Naming the unmatched XDK functions in config/game.toml once xbe_symbols can run against 5558 signatures",
+    "Kernel import coverage for the 160 kernel thunk imports (tools/kernel_coverage.py)",
+    "Bringing the native Linux Vulkan and SDL3 backends up alongside the Windows Direct3D 12 and XAudio2 ones"
+  ],
+  "tags": ["xbox", "static-recomp", "xbe", "xdk-5558", "d3d12", "vulkan", "sdl3"],
+  "notes": "In bring-up: the port has not booted yet. The retail USA XBE has been extracted and identified (title id 0x45410043, built 2003-11-13 with XDK 5558), and the repository, Windows and native Linux build scaffolding are in place. No gameplay, rendering, audio or save behaviour has been demonstrated yet; the immediate blocker is that the SDK ships XDK 5849 signatures while this game was built with XDK 5558."
+}

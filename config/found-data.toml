@@ -1,0 +1,26 @@
+# D3D_DeferredTextureState: 5849 recipe {in=D3DDevice_SetTextureStageStateNotInline, insn=13, op=disp} replays exactly in the 5558 body at 0x24A5A0: instruction 13 at 0x24A5CC is `mov dword_2644B0[ecx*4], eax` with ecx = stage*32 + type (shl ecx,5 at 0x24A5BB, add ecx,eax at 0x24A5C0); the type==12 branch at 0x24A603 stores at dword_2644E0[stage<<7] = base+12*4, confirming base 0x2644B0
+D3D_DeferredTextureState = 0x2644B0
+
+# D3D_DirtyFlags: 5849 recipe {in=D3DDevice_SelectVertexShader, insn=11, op=disp} replays exactly in D3DDevice_SelectVertexShader (0x24C090): instruction 11 at 0x24C0B8 is `or dword_2644A8, 70h`; cross-proven by D3DDevice_SetTexture (0x2471C0) `or eax, 4800h` / `mov dword_2644A8, eax` at 0x247247/0x24724D and by SetTextureStageStateNotInline (0x24A5A0) reading/writing dword_2644A8 at 0x24A5B5/0x24A5C6
+D3D_DirtyFlags = 0x2644A8
+
+# D3D_IndexData: 5849 recipe {in=D3DDevice_SetIndices, insn=8, op=disp} replays exactly in D3DDevice_SetIndices (0x247430): instruction 8 at 0x247449 is `mov dword_2644A4, eax` where eax = [edi+4] (the index buffer's data pointer), and 0x247450 stores 0 when no buffer; matches the host contract W32(kIndexData, ib ? R32(ib+4) : 0)
+D3D_IndexData = 0x2644A4
+
+# D3D_RenderState: 5849 recipe {in=D3DDevice_SetPixelShader, insn=63, op=imm} replays exactly in D3DDevice_SetPixelShader (0x24E740): instruction 63 at 0x24E82F is `mov edi, offset dword_2646B0` (rep movsd destination for the shader definition); cross-proven as base of the [166] dword array by seven complex setters at base+rs*4: FogColor(138)=0x2648D8 at 0x249EE3, TwoSidedLighting(141)=0x2648E4 at 0x24A300, ZEnable(143)=0x2648EC at 0x24AF14, StencilEnable(144)=0x2648F0 at 0x24AFCA, CullMode(147)=0x2648FC at 0x249F19, LineWidth(157)=0x264924 at 0x24A09B, and base+166*4 = 0x264948 = D3D_pDevice exactly
+D3D_RenderState = 0x2646B0
+
+# D3D_SimpleRenderStateEncode: 5849 recipe {in=D3DDevice_SetRenderStateNotInline, insn=4, op=disp} replays exactly in the unnamed 0x5D-byte body at 0x249910 (same length and k=[0x5C,0x88] as the 5849 record): instruction 4 at 0x24991A is `mov ecx, off_2E1FE0[esi*4]` for rs < 0x5C, feeding fastcall SetRenderState_Simple at 0x2498E0 via ecx=method/edx=value at 0x249926-0x249928, then `mov dword_2646B0[esi*4], edi` at 0x24992D; the table at 0x2E1FE0 holds push-buffer method words 0x40260, 0x40264, 0x40268, ... as the host expects (R32(kSimpleEncode + rs*4) & 0x1FFC)
+D3D_SimpleRenderStateEncode = 0x2E1FE0
+
+# D3D_Streams: 5849 recipe {in=D3DDevice_SetStreamSource, insn=24, op=disp} replays exactly in D3DDevice_SetStreamSource (0x24BE90): instruction 24 at 0x24BEE0 is `mov ecx, dword_266DF0[esi]` with esi = stream*12 (lea esi,[eax+eax*2]; shl esi,2 at 0x24BEAA-0x24BEAD); stride is stored at dword_266DF0[esi] (+0) at 0x24BEF2 and the vertex buffer at dword_266DF8[esi] (+8) at 0x24BEF8, matching Stream_Size=12 / Stream_Stride=0 / Stream_Buffer=8
+D3D_Streams = 0x266DF0
+
+# DSound_StreamVtable: 5849 recipe {in=CDirectSoundStream_Constructor, insn=9, op=imm} replays exactly in the constructor at 0x29048D: instruction 9 at 0x2904A6 is `mov dword ptr [esi], offset off_2F9038` (first vtable at stream+0); the table at 0x2F9038 is an array of code pointers into the DSOUND section (0x28CDBC, 0x28CE03, 0x28CE51, 0x28CF50, ...), also stored by the reset body at 0x28CD8A
+DSound_StreamVtable = 0x2F9038
+
+# DSound_StreamVtable2: 5849 recipe {in=DSound_StreamVtable2_ref, insn=7, op=imm} replays exactly in the 0x3E-byte body at 0x28CD7E (same length as the 5849 anchor): instruction 7 at 0x28CD90 is `mov dword ptr [edi], offset off_2F9028` with edi = stream+4; cross-proven in the constructor at 0x29048D, instruction 7 at 0x29049F stores the same 0x2F9028 at [esi+4]; slot 0 at 0x2F9028 is 0x231947 (`sub ecx, 4`, the second-interface this-adjusting thunk) followed by DSOUND code pointers
+DSound_StreamVtable2 = 0x2F9028
+
+# UNRESOLVED
+# (none: all eight symbols in scope were proven by exact 5849 recipe replay plus an independent semantic cross-check each)

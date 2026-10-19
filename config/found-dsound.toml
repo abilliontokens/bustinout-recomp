@@ -1,0 +1,67 @@
+# CDirectSoundStream_AddRef: vtable slot 0 of stream vtable 0x2F9038; 71B (5849 len 0x47), retn 4, k=0x80004005, only callee is the 30B validator 0x28B973, increments refcount at [this+8]
+CDirectSoundStream_AddRef = 0x28CDBC
+
+# CDirectSoundStream_Release: vtable slot 1 of 0x2F9038; 78B (5849 len 0x4E), retn 4, k=0x80004005, second callee 0x28B7E5 is 33B (5849: 33)
+CDirectSoundStream_Release = 0x28CE03
+
+# CDirectSoundStream_GetInfo: vtable slot 2 of 0x2F9038; 103B (5849 len 0x67), retn 8, k=0x80004005, second callee 0x28BA18 is 63B (5849: 63), writes the info struct
+CDirectSoundStream_GetInfo = 0x28CE51
+
+# CDirectSoundStream_GetStatus: vtable slot 3 of 0x2F9038; 81B (5849 len 0x51), retn 8, k=0x80004005, second callee 0x2953A7 is 90B (5849: 90)
+CDirectSoundStream_GetStatus = 0x28CF50
+
+# CDirectSoundStream_Process: vtable slot 4 of 0x2F9038; 119B (5849 len 0x77), retn 12, constants 0x80004005 and 0x88780032 (5849 Process k set), callees 0x2953A7 (90B) and 0x295DD1 (206B) (5849: 90, 206)
+CDirectSoundStream_Process = 0x28CFA1
+
+# CDirectSoundStream_Discontinuity: vtable slot 5 of 0x2F9038; 77B (5849 len 0x4D), retn 4, k=0x80004005, second callee 0x295939 is 45B (5849: 45)
+CDirectSoundStream_Discontinuity = 0x28CEB8
+
+# CDirectSoundStream_Flush: vtable slot 6 of 0x2F9038; 75B (5849 len 0x4B), retn 4, k=0x80004005, second callee 0x295A29 is 224B (5849: 224)
+CDirectSoundStream_Flush = 0x28CF05
+
+# CDirectSoundStream_Pause: reached by .XTLID 0xB0082 thunk 0x28E1A1 (jmp); 81B (5849 len 0x51), retn 8, k=0x80004005, second callee 0x295E9F is 142B (5849 Pause: 142, vs GetStatus 90 which is already placed at 0x28CF50)
+CDirectSoundStream_Pause = 0x28D018
+
+# CDirectSoundStream_FlushEx: reached by .XTLID 0xB0080 wrapper 0x28E1BE; 106B (5849 len 0x6A), retn 16, k=0x80004005, callees 0x2957FB (57B) and 0x295A29 (224B) (5849: 57, 224)
+CDirectSoundStream_FlushEx = 0x28D0C2
+
+# CDirectSoundStream_SetVolume: .XTLID 0xB009E thunk 0x28E17E jmp target; 82B, retn 8, k=0x80004005, forwards this+4 to helper 0x28C505 (28B, 5849 SetVolume callee: 28); same helper as IDirectSoundBuffer_SetVolume's impl 0x28D6AA
+CDirectSoundStream_SetVolume = 0x28DA06
+
+# CDirectSoundStream_SetFilter: .XTLID 0xB008D thunk 0x28E192 jmp target; 82B, retn 8, k=0x80004005, forwards this+4 to helper 0x28C547 (19B, 5849 SetFilter callee: 19); same helper as IDirectSoundBuffer_SetFilter's impl 0x28D7E2
+CDirectSoundStream_SetFilter = 0x28DAFC
+
+# CDirectSoundStream_SetFormat: .XTLID 0xB008E thunk 0x2907CE jmp target; 82B, retn 8, k=0x80004005, forwards this+4 to helper 0x2902E4 (68B, 5849 SetFormat callee: 68); same helper as IDirectSoundBuffer_SetFormat's impl 0x2906F2
+CDirectSoundStream_SetFormat = 0x290740
+
+# CDirectSoundStream_SetFrequency: .XTLID 0xB008F thunk 0x290025 jmp target; 82B, retn 8, k=0x80004005, forwards this+4 to helper 0x28EB5B (36B, 5849 SetFrequency callee: 36); same helper as IDirectSoundBuffer_SetFrequency's impl 0x28F1D0
+CDirectSoundStream_SetFrequency = 0x28F791
+
+# CDirectSoundStream_SetHeadroom: .XTLID 0xB0090 thunk 0x28E197 jmp target; 82B, retn 8, k=0x80004005, forwards this+4 to helper 0x28C55A (35B, 5849 SetHeadroom callee: 35); same helper as IDirectSoundBuffer_SetHeadroom's impl 0x28D830
+CDirectSoundStream_SetHeadroom = 0x28DB4E
+
+# CDirectSoundStream_SetMixBins: .XTLID 0xB0095 thunk 0x29002F jmp target; 82B, retn 8, k=0x80004005, forwards this+4 to helper 0x28EBD3 (29B, 5849 mix callee: 29); same helper as IDirectSoundBuffer_SetMixBins' impl 0x28F26C
+CDirectSoundStream_SetMixBins = 0x28F835
+
+# CDirectSoundStream_SetMixBinVolumes: .XTLID 0xB0096 thunk 0x28E19C jmp target; 82B, retn 8, k=0x80004005, forwards this+4 to helper 0x28C57D (29B, 5849 mix callee: 29); same helper as IDirectSoundBuffer_SetMixBinVolumes' impl 0x28D87E
+CDirectSoundStream_SetMixBinVolumes = 0x28DBA0
+
+# CDirectSoundStream_SetI3DL2Source: .XTLID 0xB0091 thunk 0x290140 jmp target; 86B (0x28FD40-0x28FD96), retn 12, k=0x80004005, forwards this+4 to helper 0x28F009 (202B, 5849: 202); same helper as IDirectSoundBuffer_SetI3DL2Source's impl 0x28F73F
+CDirectSoundStream_SetI3DL2Source = 0x28FD40
+
+# CDirectSoundStream_SetMaxDistance: 90B (5849 len 0x5A), retn 12, k=0x80004005, forwards this+4 to helper 0x28EDF0 (51B, 5849: 51); same helper as IDirectSoundBuffer_SetMaxDistance's impl 0x28F41B
+CDirectSoundStream_SetMaxDistance = 0x28F9F8
+
+# CDirectSoundStream_SetMinDistance: 90B (5849 len 0x5A), retn 12, k=0x80004005, forwards this+4 to helper 0x28EE23 (51B, 5849: 51); same helper as IDirectSoundBuffer_SetMinDistance's impl 0x28F471
+CDirectSoundStream_SetMinDistance = 0x28FA52
+
+# CDirectSoundStream_SetPosition: 107B (5849 len 0x6B), retn 20, k=0x80004005, forwards this+4 (3 floats + mode) to helper 0x28EE89 (82B, 5849: 82); same helper as IDirectSoundBuffer_SetPosition's impl 0x28F519
+CDirectSoundStream_SetPosition = 0x28FB02
+
+# CDirectSoundStream_SetVelocity: 107B (5849 len 0x6B), retn 20, k=0x80004005, forwards this+4 (3 floats + mode) to helper 0x28EEDB (82B, 5849: 82); same helper as IDirectSoundBuffer_SetVelocity's impl 0x28F580
+CDirectSoundStream_SetVelocity = 0x28FB6D
+
+# UNRESOLVED
+# None of the 21 CDirectSoundStream_* names: all 21 are placed above, each by exact 5849 length + retn + second-callee length, with k=0x80004005 throughout.
+# Deliberately NOT assigned: 0x28DAAA (82B, retn 8, helper 0x28C534 19B) is the IDirectSoundStream_SetEG implementation (.XTLID 0xB008C thunk 0x28E18D jmp target), not CDirectSoundStream_SetFilter -- SetFilter is 0x28DAFC via helper 0x28C547, the same helper IDirectSoundBuffer_SetFilter uses.
+# Remaining stream-area leads, not in the 21: 0x28D069 (89B, retn 16, callee 0x295F2D 57B) is called only by the 0xB0083 wrapper at 0x28E1A6 and is a 4-arg stream export with no 5849 CDirectSoundStream_* record; 0x28D9B4 / 0x28DA58 / 0x28DBF2 / 0x28DC44 (82B, retn 8, helpers 0x28C4EC 25B / 0x28C521 19B / 0x28C5AB 19B / 0x28C5BE 305B) are this+4 stream setters whose suffixes are not in the host symbol list (best lead: .XTLID 0xB0099 / 0xB0092 / 0xB0081 jmp thunks to the first three).

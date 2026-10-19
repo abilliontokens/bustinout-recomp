@@ -1,0 +1,194 @@
+# D3D_BlockOnResource: len 0x78/retn 4 exact vs 5849, masks resource type 0x50000/0x70000 (its k), calls 0x35-len helper and D3D_BlockOnTime; it is the body D3DResource_BlockUntilNotBusy (0x244BF0) tail-jumps to
+D3D_BlockOnResource = 0x24D630
+
+# D3D_KickOffAndWaitForIdle: len 0x11/retn 0 exact, no-arg body that pushes (device+0x2C fence counter, 2) and calls D3D_BlockOnTime (0x166~0x16A in 5849); sits between BeginPush and D3D_BlockOnResource as in the sibling link order
+D3D_KickOffAndWaitForIdle = 0x24D610
+
+# D3DDevice_Begin: len 0x35/retn 4 exact, writes push token 0x417FC with its arg, or's device flags 0x800, calls MakeSpace; first callee is the 0x7E-len helper as in its 5849 callee cluster
+D3DDevice_Begin = 0x24E200
+
+# D3DDevice_BeginPush: retn 4 (one dword-count arg), returns current push pointer ([pDevice+0]), ensures count*4 bytes via D3D_MakeRequestedSpace with 0x200 slack; called as the slow path by game code at 0x16E03A/0x16E7A9 and by DrawVerticesUP/LoadVertexShader internally
+D3DDevice_BeginPush = 0x24D5C0
+
+# D3DDevice_BlockOnFence: len 0xF/retn 4 exact, body is push 4/push arg/call D3D_BlockOnTime, in the Release/BlockUntilVerticalBlank cluster
+D3DDevice_BlockOnFence = 0x2453C0
+
+# D3DDevice_BlockUntilVerticalBlank: proven in docs/xbe-analysis.md (0x24 bytes, waits on device+0x1DBC event, clears device+0x1DC0, plain retn), matching 5849 len 0x24/k [0x1DBC,0x1DC0]
+D3DDevice_BlockUntilVerticalBlank = 0x245490
+
+# D3DDevice_CreatePixelShader: len 0x48/retn 8 exact, allocates 0xFC bytes, returns 0x8007000E (its sole k) on failure, copies 0x3C dwords of shader def from arg0 and stores the record to *arg1
+D3DDevice_CreatePixelShader = 0x24E290
+
+# D3DDevice_DeletePixelShader: len 0x1D/retn 4 (5849 0x1D), decrements the record refcount at [arg], frees it with the 0x24800000 heap when it reaches zero; adjacent to CreatePixelShader as in the sibling order
+D3DDevice_DeletePixelShader = 0x24E2E0
+
+# D3DDevice_DeleteVertexShader: len 0x1B/retn 4 exact vs 5849, decrements the refcount byte/dword at handle-1 and frees the handle-1 allocation when zero; sits just before D3DDevice_SetVertexShader's helper cluster
+D3DDevice_DeleteVertexShader = 0x24C2E0
+
+# D3DDevice_DrawVerticesUP: len 0x165/retn 0x10 exact, constants 0xBC8/0xBCC/0xBD0/0xBD4/0xC54/0x417FC/0x40001818/0x7FF all from its 5849 k, calls BeginPush to emit inline vertices (0x1818 packet)
+D3DDevice_DrawVerticesUP = 0x24D9E0
+
+# D3DDevice_End: len 0x41/retn 0 exact, writes push token 0x417FC with 0, clears device flags with 0xFFFFE7FF (both in its k), conditionally calls D3D_SetFence; immediately follows Begin
+D3DDevice_End = 0x24E240
+
+# D3DDevice_EndPush: retn 4, the only stdcall-1 function in the D3D section that stores its arg into *pDevice ([pDevice+0]), the push-buffer write pointer every BeginPush/Simple writer advances; EndPush's whole job is setting that pointer to the caller's end
+D3DDevice_EndPush = 0x24D0C0
+
+# D3DDevice_FlushVertexCache: len 0x27/retn 0 exact, writes the single push pair (0x41710, 0) via MakeSpace — 0x41710 is its sole 5849 k — found in an int3-padded gap at 0x2476F0 that IDA had not split out
+D3DDevice_FlushVertexCache = 0x2476F0
+
+# D3DDevice_GetBackBuffer2: proven in docs/xbe-analysis.md (index -1 -> [device+0x1A18], 0 -> [device+0x1A14], AddRefs via the 0x37-len refcount helper), len 0x43/retn 4
+D3DDevice_GetBackBuffer2 = 0x2463E0
+
+# D3DDevice_GetDepthStencilSurface2: proven in docs/xbe-analysis.md (returns [device+0x1A08] AddRef'd), len 0x1E/plain retn matching 5849 k [0x1A08]
+D3DDevice_GetDepthStencilSurface2 = 0x246B20
+
+# D3DDevice_GetRenderTarget2: len 0x1A/retn 0 exact, returns [device+0x1A04] (its k) AddRef'd via the 0x37-len helper, null-checked; immediately precedes GetDepthStencilSurface2 as in the sibling order
+D3DDevice_GetRenderTarget2 = 0x246B00
+
+# D3DDevice_InsertFence: len 8/retn 0 exact, body is push 0/call D3D_SetFence (0xB8-len callee, first entry of its 5849 callee cluster)/retn
+D3DDevice_InsertFence = 0x245790
+
+# D3DDevice_IsFencePending: len 0x1E/retn 4 exact, no callees as in 5849; computes (device+0x2C next fence) vs *(device+0x30) completed counter relative to its fence arg and returns the boolean; sits immediately before InsertCallback in the sibling's order
+D3DDevice_IsFencePending = 0x24D010
+
+# D3DDevice_LoadVertexShader: len 0x54/retn 8 exact, k 0x114/0x41E9C both present (copies shader function from handle+0x114, pushes token 0x41E9C), callees are the 0xAE-len declaration parser and BeginPush (0x44) as in its two-level 5849 cluster
+D3DDevice_LoadVertexShader = 0x24BFC0
+
+# D3DDevice_MakeSpace: len 0xF/retn 0 exact, its only call is D3D_MakeRequestedSpace (0x137-len callee, the head of its 5849 cluster); every push writer in the section tail-calls or calls this address for space
+D3DDevice_MakeSpace = 0x24D5B0
+
+# D3DDevice_SetFlickerFilter: len 0x42/retn 4 exact, calls the miniport at [device+0x1C28] (its k displacement) with command 0x0B and caches the value; first of the flicker/soft pair after BlockUntilVerticalBlank as in the sibling order
+D3DDevice_SetFlickerFilter = 0x245620
+
+# D3DDevice_SetMaterial: IDA len 0x30/retn 4 exact, copies 0x11 dwords from its arg to device+0xF00 and or's D3D_DirtyFlags with 0x9000 — its exact 5849 k [0xF00,0x9000] (the +0xF44 twin is the second material slot's setter)
+D3DDevice_SetMaterial = 0x2451D0
+
+# D3DDevice_SetPalette: proven in docs/xbe-analysis.md and the task brief (stores [device+stage*4+0xF98], pushes (stage<<6)+0x41B20), len 0x8D/retn 8, between SetTexture and SetIndices
+D3DDevice_SetPalette = 0x2473A0
+
+# D3DDevice_SetRenderStateNotInline: len 0x5D/retn 8 exact, bounds 0x5C/0x88 from its k, dispatches through the encode tables and calls D3DDevice_SetRenderState_Simple (0x27-len first callee)
+D3DDevice_SetRenderStateNotInline = 0x249910
+
+# D3DDevice_SetRenderState_BackFillMode: len 0x51/retn 4, writes token 0x8038C pair (saved front fill from 0x2648DC, its arg) and saves arg as the back-fill value 0x2648E0; second of the FillMode/BackFillMode pair in sibling link order
+D3DDevice_SetRenderState_BackFillMode = 0x24A260
+
+# D3DDevice_SetRenderState_DoNotCullUncompressed: len 0x11/retn 4, stores arg to global 0x264944 and calls the 0xCE-len render-state recompute (its 5849 callee), third of the three consecutive 0x11 setters in sibling link order (RopZCmpAlwaysRead, RopZRead, DoNotCullUncompressed)
+D3DDevice_SetRenderState_DoNotCullUncompressed = 0x24B1A0
+
+# D3DDevice_SetRenderState_EdgeAntiAlias: len 0x32/retn 4, writes token 0x80320 (its sole k) with the arg duplicated; immediately before ShadowFunc/FogColor as in the sibling order
+D3DDevice_SetRenderState_EdgeAntiAlias = 0x249E20
+
+# D3DDevice_SetRenderState_FillMode: len 0x44/retn 4 exact, writes token 0x8038C (its k) pair (its arg, saved back-fill 0x2648E0) and saves arg as front fill 0x2648DC; first of the pair, BackFillMode follows
+D3DDevice_SetRenderState_FillMode = 0x24A210
+
+# D3DDevice_SetRenderState_FrontFace: len 0x3A exact, writes token 0x403A0 (its k) then tail-jumps to D3DDevice_SetRenderState_CullMode to re-apply culling; between CullMode and NormalizeNormals in sibling link order
+D3DDevice_SetRenderState_FrontFace = 0x249F60
+
+# D3DDevice_SetRenderState_LogicOp: len 0x52/retn 4 exact, writes token 0x417BC for 0 and 0x817BC/1/arg otherwise — both constants are its exact 5849 k
+D3DDevice_SetRenderState_LogicOp = 0x24A1B0
+
+# D3DDevice_SetRenderState_MultiSampleAntiAlias: len 0x72/retn 4 exact, stores arg to the anti-alias global 0x264910 and writes token 0x41D7C (its k) combining the mask/sample globals; longest of the three 0x41D7C writers as in 5849
+D3DDevice_SetRenderState_MultiSampleAntiAlias = 0x24B220
+
+# D3DDevice_SetRenderState_MultiSampleMask: len 0x50/retn 4, stores arg shifted <<16 to the mask global 0x264914 and writes token 0x41D7C; middle of the AntiAlias/Mask/SampleAlpha trio by address and by 5849 length
+D3DDevice_SetRenderState_MultiSampleMask = 0x24B2A0
+
+# D3DDevice_SetRenderState_MultiSampleMode: len 0x27/retn 4, stores arg to mode global 0x264918 and only recomputes (call to 0x355-len helper, its 5849 head callee) when the render target is the back buffer ([device+0x1A04]==[device+0x1A14]); first of the twin pair in sibling order
+D3DDevice_SetRenderState_MultiSampleMode = 0x24B1C0
+
+# D3DDevice_SetRenderState_MultiSampleRenderTargetMode: len 0x27/retn 4, stores arg to 0x26491C and only recomputes when the render target is NOT the back buffer — the exact complement of MultiSampleMode; second of the twin pair
+D3DDevice_SetRenderState_MultiSampleRenderTargetMode = 0x24B1F0
+
+# D3DDevice_SetRenderState_NormalizeNormals: len 0x39/retn 4 exact, writes token 0x403A4 and or's D3D_DirtyFlags with 0x200 (its k pair), between FrontFace and TextureFactor in sibling link order
+D3DDevice_SetRenderState_NormalizeNormals = 0x249FA0
+
+# D3DDevice_SetRenderState_OcclusionCullEnable: len 0x62/retn 4, stores arg to global 0x264934 (bit0 of the combined value) and writes token 0x41D84 (its k, with 0x1E00 in its compare), first of the identical twin pair in sibling link order
+D3DDevice_SetRenderState_OcclusionCullEnable = 0x24B080
+
+# D3DDevice_SetRenderState_PSTextureModes: len 0x22/retn 4 exact, stores arg at device+0x790 and a copy global, or's D3D_DirtyFlags with 0x4000 — its exact k [0x790,0x4000]; before Simple/NotInline as in the sibling order
+D3DDevice_SetRenderState_PSTextureModes = 0x2498B0
+
+# D3DDevice_SetRenderState_RopZCmpAlwaysRead: len 0x11/retn 4, stores arg to global 0x26493C and calls the 0xCE-len render-state recompute (its 5849 callee); first of the three consecutive 0x11 setters in sibling link order
+D3DDevice_SetRenderState_RopZCmpAlwaysRead = 0x24B160
+
+# D3DDevice_SetRenderState_RopZRead: len 0x11/retn 4, stores arg to global 0x264940 and calls the 0xCE-len recompute; second of the three consecutive 0x11 setters in sibling link order
+D3DDevice_SetRenderState_RopZRead = 0x24B180
+
+# D3DDevice_SetRenderState_SampleAlpha: len 0x4E/retn 4, stores arg to the sample-alpha global 0x264928 and writes token 0x41D7C combining mask<<16; last of the AntiAlias/Mask/SampleAlpha trio by address and by 5849 length
+D3DDevice_SetRenderState_SampleAlpha = 0x24B2F0
+
+# D3DDevice_SetRenderState_ShadowFunc: len 0x35/retn 4 exact, writes token 0x41E6C with arg-0x200 (its k [0x41E6C,0xFFFFFE00]); between EdgeAntiAlias and FogColor as in the sibling order
+D3DDevice_SetRenderState_ShadowFunc = 0x249E60
+
+# D3DDevice_SetRenderState_Simple: len 0x27/retn 0 exact, regs ecx/edx as recorded — writes the (ecx,edx) pair at the push pointer and tail-falls into MakeSpace; called only by SetRenderStateNotInline
+D3DDevice_SetRenderState_Simple = 0x2498E0
+
+# D3DDevice_SetRenderState_StencilCullEnable: len 0x62/retn 4, stores arg to global 0x264938 (bit1 of the combined value) and writes token 0x41D84; second of the identical twin pair in sibling link order
+D3DDevice_SetRenderState_StencilCullEnable = 0x24B0F0
+
+# D3DDevice_SetRenderState_TextureFactor: len 0x51/retn 4 exact, writes token 0x400A60 (its k) with the arg repeated 16 times; between NormalizeNormals and LineWidth in sibling link order
+D3DDevice_SetRenderState_TextureFactor = 0x249FE0
+
+# D3DDevice_SetRenderState_VertexBlend: len 0x41/retn 4 exact, writes token 0x40328 and or's D3D_DirtyFlags with 0x200 (its k pair), after TwoSidedLighting as in the sibling order
+D3DDevice_SetRenderState_VertexBlend = 0x24A340
+
+# D3DDevice_SetRenderState_YuvEnable: len 0x2B/retn 4 exact, its callees are MakeSpace (0xF) and the 0x59-len state helper as in 5849; first setter after StencilFail in sibling link order
+D3DDevice_SetRenderState_YuvEnable = 0x24B050
+
+# D3DDevice_SetScreenSpaceOffset: proven in docs/xbe-analysis.md (stores x/y at device+0xEF8/0xEFC, its k), len 0x49/retn 8 matching 5849
+D3DDevice_SetScreenSpaceOffset = 0x2480F0
+
+# D3DDevice_SetSoftDisplayFilter: len 0x51/retn 4 exact, calls the miniport at [device+0x1C28] with command 0x0E and caches a booleanised value; second of the flicker/soft pair (SetFlickerFilter precedes it)
+D3DDevice_SetSoftDisplayFilter = 0x245670
+
+# D3DDevice_SetTextureStageStateNotInline: proven in docs/xbe-analysis.md (table[stage*32+type] at 0x2644B0), len 0xEC/retn 0xC matching 5849 exactly, after ColorKeyColor in sibling link order
+D3DDevice_SetTextureStageStateNotInline = 0x24A5A0
+
+# D3DDevice_SetTextureState_BorderColor: len 0x3D/retn 8 exact, writes token (stage<<6)+0x41B24 (its k) with its value arg and caches it in the stage table; between BumpEnv and ColorKeyColor in sibling link order
+D3DDevice_SetTextureState_BorderColor = 0x24A510
+
+# D3DDevice_SetTextureState_BumpEnv: len 0x63/retn 0xC exact, writes token 0x41AD0-derived (its k) and stores to the deferred texture-state table 0x2644B0; first texture-state setter after TexCoordIndex in sibling link order
+D3DDevice_SetTextureState_BumpEnv = 0x24A4A0
+
+# D3DDevice_SetTextureState_ColorKeyColor: len 0x39/retn 8 exact, writes token (stage*4)+0x40AE0 (its k) with its value arg and caches it; last of the three texture-state setters before SetTextureStageStateNotInline
+D3DDevice_SetTextureState_ColorKeyColor = 0x24A550
+
+# D3DDevice_SetTile: len 0xA with no stack args — call D3D_KickOffAndWaitForIdle (0x11-len, itself calling 0x166-len BlockOnTime) then jmp to the 0xD1-len tile programmer at 0x247940, matching both levels of its 5849 callee cluster [0x11,[0x16A]],[0xD1,[0x1EE,0xC2]] exactly (0x247940 calls 0x1EE- and 0xC2-len miniport functions)
+D3DDevice_SetTile = 0x247A20
+
+# D3DDevice_SetVertexShaderConstant1: len 0x5F/retn 0, fastcall regs ecx/edx as recorded, writes token 0x41EA4 header 0x100B80 (its k), copies 4 dwords from edx to the push buffer AND to the fast-constant scratch 0x263890+reg*16 — the non-Fast variant's scratch copy
+D3DDevice_SetVertexShaderConstant1 = 0x24BA10
+
+# D3DDevice_SetVertexShaderConstant1Fast: len 0x49/retn 0 exact, identical token/header writes (0x41EA4/0x100B80) but no fast-constant scratch copy — the Fast variant; between Constant1 and Constant4 in the shader-constant cluster
+D3DDevice_SetVertexShaderConstant1Fast = 0x24BA70
+
+# D3DDevice_SetVertexShaderConstant4: len 0xA2/retn 0 exact, reserves 0x4C push dwords (its k 0x4C), writes token 0x41EA4 and copies 4 constants (16 dwords via mm registers) to push buffer and scratch
+D3DDevice_SetVertexShaderConstant4 = 0x24BAC0
+
+# D3DDevice_SwitchTexture: len 0x30/retn 4 with regs ecx/edx as recorded — the only such function: fastcall (method in ecx, data in edx, format on stack) writing exactly those 3 dwords at the push pointer with MakeSpace (0xF callee) fallback; found in the gap at 0x245300 in the device-method cluster
+D3DDevice_SwitchTexture = 0x245300
+
+# Lock2DSurface: len 0x9B/retn 0x18 (6 args, the HLE_WRAP count), calls D3D_BlockOnResource (0x78-len first callee of its 5849 cluster) unless NOOVERWRITE, then the 0x223-len surface-desc helper; also reached by the XTLID thunk at 0x2446A0
+Lock2DSurface = 0x250FC0
+
+# UNRESOLVED
+# No name in the assigned 58 is left unplaced: all 55 sec="D3D" names at 0 plus
+# D3DDevice_BeginPush, D3DDevice_EndPush and D3DDevice_SetPalette are entered above.
+#
+# NOT IN THE CONFIG NAME LIST (cannot be entered above, needs a [symbols] name first):
+# D3DDevice_InsertCallback = 0x24D030 — PROVEN but absent from config/game.toml,
+# sdk/xdk/5558/signatures.toml and sdk/xdk/5849/signatures.toml alike. Body (len 0x6B,
+# retn 0xC): ensures push space via MakeSpace, writes push token 0x81D8C with the
+# callback pointer and context args, then a 0x40100 (or 0x40110+0x40100) packet pair.
+# It sits exactly where the sibling Urbz port has it: after D3DDevice_IsFencePending
+# (0x24D010) and before CDevice_KickOff (0x24D120). Guest .text calls it directly at
+# 0x16E6B0, 0x16ED53, 0x16EF6B, 0x1740FF and 0x174145, so an unreplaced callback here
+# is a live boot-deadlock candidate — please add the name so this address can be hooked.
+#
+# Weakest-evidence entries above (placed, but worth a second look at merge time):
+# D3DDevice_EndPush (0x24D0C0) — no 5849 signature exists ({}), placement rests on it
+# being the unique stdcall-1 store of its arg into the push write pointer *pDevice;
+# D3DDevice_SwitchTexture (0x245300) — rests on the unique len/ret/regs/callee match;
+# the OcclusionCullEnable/StencilCullEnable and RopZ*/DoNotCull twins are byte-identical
+# in shape and are separated only by sibling link order plus which global each stores.
