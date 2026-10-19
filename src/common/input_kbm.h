@@ -17,6 +17,10 @@ bool Message(void* hwnd, uint32_t msg, uintptr_t wp, intptr_t lp, intptr_t* resu
 // (overlay::Draw forwards ImGui's wheel while the settings panel is closed). On Windows the
 // wheel arrives as WM_MOUSEWHEEL in Message instead, so this exists only on the SDL host.
 void NoteWheel(int notches);
+// D11: the mouse position/buttons, sampled by the window thread (the only thread
+// SDL_GetMouseState may be called on) and read by guest polling threads through
+// atomics in input_kbm.cpp. Called from the SDL host's event loop each iteration.
+void NoteMouse(float x, float y, bool right, bool middle);
 #endif
 
 // app::GameInfo::pad: any guest thread, each poll. ORs the keyboard and mouse into port 0 and

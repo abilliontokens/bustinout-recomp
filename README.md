@@ -2,18 +2,20 @@
 
 An unofficial native PC port of the original Xbox release of *The Sims: Bustin' Out* (USA),
 produced by statically recompiling the game's x86 XBE with the
-[XboxXBERecomp SDK](https://github.com/TGP482/XboxXBERecomp) (vendored in `sdk/`).
+[XboxXBERecomp SDK](https://github.com/abilliontokens/XboxXBERecomp) fork (vendored in `sdk/` as a submodule at SDK commit `c3d4335`).
 Windows uses Direct3D 12 and XAudio2; Linux is a native Vulkan and SDL3 build — no Wine.
 
 **Status: in progress — boots, renders, reaches playable gameplay.** The native Linux build
 boots, plays the intro movie whole and correctly proportioned (pillarboxed at the game's own
 4:3 on a wider display) with SDL3 audio, and drives title → main menu → save select → name
-entry → Create-a-Sim → save → a loaded, playable household at 2181 draws/frame with 0 skipped
-and 0 dropped draws (`out/shots/house3_house.png` shows the club, the Sims, the HUD and a
-dialogue; `docs/status.md`, `docs/playtest.md`). Game speed is measured at 1.000 game-seconds per
-real second at 60, 144 and uncapped fps. What is still untested: an allocation-ordering defect
-in the Vulkan backend's `UploadAlloc`/`AllocDrawSet` (found by code reading, being fixed);
-Hor+ ultrawide is not implemented (pillarboxed, not widened); no controller has ever been
+entry → Create-a-Sim → save → a loaded, playable household at 2176 draws/frame with 0 skipped
+and 0 dropped draws on the final check of the committed build (`docs/black-scene.md`;
+`out/shots/house3_house.png`, from a 2181-draw run of the same scene, shows the club, the Sims,
+the HUD and a dialogue; `docs/status.md`, `docs/playtest.md`). Game speed is measured at 1.000
+game-seconds per real second at 60, 144 and uncapped fps. The Vulkan allocation-ordering
+defect in `UploadAlloc`/`AllocDrawSet` is fixed and proven (`stalealloc 0` over a full
+boot → household run, SDK `e809cd4`; `docs/black-scene.md`). What is still untested:
+Hor+ ultrawide is not implemented (pillarboxed, not widened; `docs/ultrawide.md`); no controller has ever been
 plugged into the test machine (gamepad unexercised); saving/reloading through visible play is
 unproven; the remaining cheat rows and the per-call frame-rate consumers listed in
 `docs/frame-rate.md` are unproven in play; and the Windows build has never been
@@ -81,7 +83,11 @@ the keyboard and the mouse and the game sees neither.
 
 **F1** opens the host settings panel (display mode, resolution, aspect ratio, ultrawide,
 vsync, frame cap, render scale, anisotropic filtering, HDR on Windows, and the **Cheats**
-section) and **F2** the frame-time graph. **F3** captures a frame when `XBE_CAPTURE_DIR` is
+section) and **F2** the frame-time graph. In the F1 panel the **Resolution** control is
+greyed out in borderless mode — borderless always follows the display it is on, so no
+chosen resolution can apply there; it is editable in windowed and fullscreen, and the
+stored value survives a mode switch (`src/common/overlay.cpp`, superproject `4fae9fc`).
+**F3** captures a frame when `XBE_CAPTURE_DIR` is
 set (see below). Settings are kept in `settings.toml` beside the executable
 (`src/common/game_info.cpp`: `.settings = "settings.toml"`); the first run also creates
 `logs/` and `hdd/` (where saves go) beside it. Keys read by
@@ -95,8 +101,8 @@ set (see below). Settings are kept in `settings.toml` beside the executable
 | `fps_cap` | frame-rate cap; `0` = unlimited (default `60`) |
 | `vsync` | `true` / `false` (default `true`) |
 | `anisotropic_filtering` | `0` = as the game asks (default) |
-| `aspect_ratio` | `auto` (default), `4:3`, `16:9`, `16:10`, `21:9`, `32:9` |
-| `ultrawide` | `true` (default) / `false` — on Vulkan today this is read and logged but does not widen the frame target yet; the picture is pillarboxed at the chosen aspect (see **Status**) |
+| `aspect_ratio` | `auto` (default), `4:3`, `16:9`, `16:10`, `21:9`, `32:9` — on Vulkan this sets only the aspect the finished picture is presented at (`PresentSrcAspect()` in `sdk/runtime/gpu/vulkan.cpp`); `auto` presents at the title's own 4:3 |
+| `ultrawide` | `true` (default) / `false` — on Linux/Vulkan this has **no visible effect today**: the factor is computed in `sdk/runtime/app/settings.cpp` and read by the Vulkan backend for logging only, the frame target is never widened, and the picture stays pillarboxed at the presented aspect (see `docs/ultrawide.md`). The widening path exists only in the never-compiled D3D12 backend |
 | `hdr`, `hdr_paper_white`, `hdr_peak` | Windows/D3D12 only: `off` (default) / `auto` / `on`; paper white default `200`, peak `0` = display maximum |
 | `join_ip` | system-link co-op host address (empty by default) |
 
@@ -116,10 +122,16 @@ The F1 panel's **Cheats** section enters the game's own pad codes the game's own
 | `XBE_MUTE=1` | silence SDL audio output for capture/benchmark runs (`sdk/runtime/audio/sdl_audio.cpp`) |
 | `SIMSBO_NO_STEP=1` | disable the frame-step fix in `src/game/hooks.cpp`: the stock 1/60 s quantiser runs untouched, so game speed is tied to frame rate as on the console at high fps |
 | `XBE_VK_DEBUG_DRAW=1` | full per-draw Vulkan dump (`sdk/runtime/gpu/vulkan.cpp`) |
+| `XBE_CAPTURE_PROBE=<x>,<y>` | F3 capture probe point, as fractions of the presented picture's width and height: the capture lists clears/draws that changed that pixel (`sdk/runtime/core/diag.h`) |
+| `XBE_NO_UVRECT=1` | disable the UV-rect clamp for 2-D sprite quads, for bisecting a texture seam (both backends: `sdk/runtime/gpu/vulkan.cpp`, `sdk/runtime/gpu/d3d12.cpp`) |
+| `XBE_STATE_VERIFY=1` | render-thread state tracking compares every state piece each frame and logs changes no dirty mark covered (`sdk/runtime/gpu/render_thread.cpp`) |
+| `XBE_NO_STATE_DIRTY=1` | render-thread state tracking compares every state piece each frame, as before the dirty marks (`sdk/runtime/gpu/render_thread.cpp`) |
 | `SIMSBO_AUTOSTART=1` | scripted pad self-test on port 0 (blind Start/Up/A cycle; `src/common/game_info.cpp`) — it never finishes name entry, so it cannot reach a household unattended |
 | `SIMSBO_STEP=<file>` | step mode: each token written to the file is one burst of pad-0 pulses (`src/common/game_info.cpp`) |
 
-Unset is the normal path; the `SIMSBO_*` switch in `src/game/hooks.cpp` also treats `"0"` as off.
+Unset is the normal path. Presence alone switches most of these on (any value, including
+`"0"`); the exceptions are `XBE_MUTE` and the `SIMSBO_NO_*` switch in `src/game/hooks.cpp`,
+which treat `"0"` as off (`sdk/runtime/audio/sdl_audio.cpp`, `src/game/hooks.cpp`).
 
 ## Layout
 

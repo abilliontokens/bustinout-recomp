@@ -311,5 +311,7 @@ so the comparison stops above it.
 - **Nothing past the intro was observed.** The fix changes every vertex program draw into the
   back buffer, not only the movie: this title doubles all of them (`sub_128BF0` returns 2.0 for
   every mode but 720p) and uses 1 for its render-to-texture views, the same split
-  `UpdateSuperSample` makes. Every run here ended inside the intro (about 22 s), so menus and
-  gameplay under the fix are not proven.
+  `UpdateSuperSample` makes. Every run for that fix ended inside the intro (about
+  22 s), so menus and gameplay under the fix were not proven by those runs; they
+  have been since — menus, Create-a-Sim and the loaded household under the
+  supersample fix are proven in `docs/playtest.md` and `docs/status.md`.

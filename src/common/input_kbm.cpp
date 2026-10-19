@@ -36,7 +36,9 @@
 // and mouse state comes from the host's window messages through kbm::Message (wired as
 // app::GameInfo::message in game_info.cpp); held keys are released on focus loss, because an
 // alt-tabbed game gets no WM_KEYUP for them. On Linux the SDL3 host's event loop feeds ImGui and
-// never calls that hook, so Apply polls SDL_GetKeyboardState / SDL_GetMouseState instead, gated
+// never calls that hook, so Apply polls SDL_GetKeyboardState (documented any-thread) and,
+// for the mouse, the cache kbm::NoteMouse fills on the window thread (D11:
+// SDL_GetMouseState is main-thread-only and is never called here), gated
 // on app::platform::HasFocus() for the real host window. Both paths fill the one State snapshot
 // below, and the one Apply() under it merges that snapshot into the pad; the wheel is the one
 // event-shaped input: WM_MOUSEWHEEL on Windows, kbm::NoteWheel forwarded from ImGui's wheel by
@@ -212,6 +214,14 @@ bool Collect(State& state) {
 
 #else
 
+// D11: mouse state cached by the window thread through NoteMouse (below), read by
+// guest polling threads here. SDL_GetMouseState is main-thread-only, so Collect
+// never calls it; these atomics are the whole cross-thread surface, exactly as
+// the Windows path's g_mouse_* atomics above.
+std::atomic<float> g_mouse_x{0.0f}, g_mouse_y{0.0f};  // window pixels, last sample
+std::atomic<bool> g_mouse_rmb{false};                 // right mouse button: the camera stick
+std::atomic<bool> g_mouse_mmb{false};                 // middle mouse button: right stick click
+
 // right-button drag state: written and read only under this lock, on guest polling threads
 std::mutex g_drag_lock;
 bool g_drag_rmb = false;                     // the drag in progress at the last poll
@@ -249,10 +259,11 @@ bool Collect(State& state) {
     state.Set(Key::LeftTrigger, down(SDL_SCANCODE_Z));
     state.Set(Key::RightTrigger, down(SDL_SCANCODE_C));
 
-    float x = 0.0f, y = 0.0f;
-    const SDL_MouseButtonFlags buttons = SDL_GetMouseState(&x, &y);
-    state.rmb = (buttons & SDL_BUTTON_MASK(SDL_BUTTON_RIGHT)) != 0;
-    state.mmb = (buttons & SDL_BUTTON_MASK(SDL_BUTTON_MIDDLE)) != 0;
+    // D11: the window thread's cached sample, not SDL_GetMouseState on this guest thread
+    const float x = g_mouse_x.load(std::memory_order_relaxed);
+    const float y = g_mouse_y.load(std::memory_order_relaxed);
+    state.rmb = g_mouse_rmb.load(std::memory_order_relaxed);
+    state.mmb = g_mouse_mmb.load(std::memory_order_relaxed);
     std::lock_guard lock(g_drag_lock);
     if (state.rmb && !g_drag_rmb) {  // the drag starts where the button went down
         g_anchor_x = x;
@@ -330,6 +341,14 @@ bool Message(void* hwnd, uint32_t msg, uintptr_t wp, intptr_t lp, intptr_t* resu
 #else
 
 void NoteWheel(int notches) { PulseWheel(notches); }
+
+// D11: window thread only; publishes the sample Collect reads on guest threads.
+void NoteMouse(float x, float y, bool right, bool middle) {
+    g_mouse_x.store(x, std::memory_order_relaxed);
+    g_mouse_y.store(y, std::memory_order_relaxed);
+    g_mouse_rmb.store(right, std::memory_order_relaxed);
+    g_mouse_mmb.store(middle, std::memory_order_relaxed);
+}
 
 #endif
 

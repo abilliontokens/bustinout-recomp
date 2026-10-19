@@ -77,6 +77,10 @@ xbe_symbols assets/default.xbe sdk/xdk --out config/game.toml
   found 108 of 240 functions, 4 of 12 data
 ```
 
+(That is the first bootstrap run. `config/game.toml` today holds **194 of 242**
+`[symbols]` and **12 of 12** `[data]`, after later runs and additions such as the
+D1 entry point below.)
+
 No name was given an address by hand. Names left at 0 are trapping stubs, which is the
 correct state for them.
 
@@ -132,7 +136,7 @@ and the `IDirectSound*`/`IDirectSoundBuffer*` set: `IDirectSound_Release` 0xB004
 `IDirectSoundBuffer_StopEx` 0xB007E→0x28DFFE, `IDirectSoundBuffer_Unlock` 0xB007F→0x28BAF7,
 `IDirectSoundStream_SetEG` 0xB008C→0x28E18D.
 Data by .XTLID: `D3D_Device` 0x80001→0x264950, `D3D_pDevice` 0x80003→0x264948,
-`XPP_GamepadType` 0x1007C→0x2D9D10, `XPP_MemoryUnitType` 0x1007E→0x2D9DC0 (4 of 12 data).
+`XPP_GamepadType` 0x1007C→0x2D9D10, `XPP_MemoryUnitType` 0x1007E→0x2D9DC0 (4 of 12 data — that first run; `config/game.toml` now has 12 of 12).
 
 ## Resolved: 43 by constants (score in the scanner report)
 
@@ -239,4 +243,7 @@ Addresses below are leads proven while proving the layout, **not** config entrie
 - `sdk/xdk/5558/signatures.toml` — seeded set consumed by the scanner (240 symbols).
 - `sdk/xdk/5558/layout.toml` — field offsets, each with its 5558 proof address;
   `XPP_Current/Changed/Previous` flagged UNPROVEN.
-- `config/game.toml` — scanner output, unedited: `found 108 of 240 functions, 4 of 12 data`.
+- `config/game.toml` — scanner output, unedited at bootstrap time: the run above
+  found 108 of 240 functions, 4 of 12 data; the file now holds 194 of 242
+  `[symbols]` and 12 of 12 `[data]` after later runs and hand additions
+  (e.g. the D1 entry point).

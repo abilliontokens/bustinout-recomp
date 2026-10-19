@@ -121,6 +121,12 @@ verbatim:
 [49.995] Exit (0)
 ```
 
+(The quoted log's `dispatch: 27495 functions` is the dispatcher's own count in that
+recorded run; the recompiler's count for this XBE is 27,492 functions in
+`generated/game/x86_recomp_stats.txt`, which is the number used everywhere else in
+this record. The 3-function difference between the two counters is not explained
+in any file in this repository.)
+
 So the guest runs, the disc reads, shaders translate, the device resets (three times in this log),
 the XMV intro movie opens with a 48 kHz DirectSound stream, and audio is actually submitted to
 SDL (4,500 buffers, peak 0.4922 — not silence).
@@ -222,25 +228,33 @@ SDL (4,500 buffers, peak 0.4922 — not silence).
    shows the intro movie still whole and correctly pillarboxed after the change.
    This closes former defects D2 and D3 below; they were one defect, not two.
 
-## Open renderer defects
+## Renderer defects: none open in this section
 
-- **Allocation ordering in `UploadAlloc`/`AllocDrawSet` (OPEN, being fixed in
-  parallel; found by code reading in `sdk/runtime/gpu/vulkan.cpp`, corroborated by
-  a pre-fix validation run).** Both read `Cur().used` / `Cur().pool` without
+- **Allocation ordering in `UploadAlloc`/`AllocDrawSet` (FIXED, SDK `e809cd4`;
+  full account in `docs/black-scene.md`).** Both read `Cur().used` / `Cur().pool` without
   calling `EnsureRecording()`. After any `Submit` — a `ReadBackImage`, a `Sync`
-  flush, or the upload-reserve `Submit` inside `Draw` — `recording_` is false. If
-  the next `Draw` records nothing before them (`TransitionRaw` returns early when
-  the layout already matches), its constants and its descriptor set are allocated
+  flush, or the upload-reserve `Submit` inside `Draw` — `recording_` was false. If
+  the next `Draw` recorded nothing before them (`TransitionRaw` returns early when
+  the layout already matches), its constants and its descriptor set were allocated
   from the stale upload offset and the un-reset pool. Then `BeginTargetPass`'s
-  `vkCmdBeginRenderPass(Cmd())` runs `EnsureRecording()`, which does
-  `vkResetDescriptorPool` and sets `used = 0`: the draw binds a set that was just
-  freed, and its constants are overwritten by later draws. The pre-existing
-  "flush and retry" fallback in `Draw` cannot work for the same reason — a flush
-  does not reset the pool. The validation run that corroborates it reported
+  `vkCmdBeginRenderPass(Cmd())` ran `EnsureRecording()`, which does
+  `vkResetDescriptorPool` and sets `used = 0`: the draw bound a set that was just
+  freed, and its constants were overwritten by later draws. The pre-existing
+  "flush and retry" fallback in `Draw` could not work for the same reason — a flush
+  does not reset the pool. The pre-fix validation run that corroborates it reported
   `vkCmdBindDescriptorSets(): Couldn't find VkDescriptorSet …` and "uses set 0
   but that set is not bound" right after `BlockOnResource` read-backs
-  (`out/evidence/black-scene/COORDINATION.txt`). Until that fix lands and is
-  exercised, long household play after read-backs is not proven free of it.
+  (`out/evidence/black-scene/COORDINATION.txt`). *Fix:* both allocators now call
+  `EnsureRecording()` first (`sdk/runtime/gpu/vulkan.cpp`, `UploadAlloc` and
+  `AllocDrawSet`), the dead flush-and-retry is gone, and a segment-generation
+  counter (`stalealloc` in the `XBE_PERF` line) counts any allocation handed out
+  against a closed segment. *Proof:* with the calls temporarily removed the
+  counter fired 3 times right after the household-load read-backs; with them
+  restored it read `stalealloc 0` in all 91 perf lines over a full
+  boot → intro → menu → household run, and the final check on the committed
+  build (`e809cd4`) measured the household at 2176 draws/frame, 0 skipped,
+  0 `nopipeline`, `stalealloc` 0 (`docs/black-scene.md`, final check;
+  `out/shots/bsf_final.log`, `out/shots/allocafter_92s.png`).
 
 Former defects D2 (household presents black) and D3 (159–267 dropped draws) are
 closed by item 9 above: they were the one descriptor-pool defect, not two.
@@ -307,6 +321,9 @@ kernel imports; recompilation (27,492 functions, 894,565 instructions,
 `generated/game/x86_recomp_stats.txt`); the Linux build; the boot sequence, swaps, device resets,
 disc reads, XMV open and SDL audio quoted above; the bring-up symbol fixes (`0x2283CD`,
 `D3DDevice_Reset`, D1 `0x66980`), the dirty-disc fix, and the renderer fixes (items 4–6, 8 and 9);
+the allocation-ordering fix (SDK `e809cd4`: `stalealloc 0` over a full boot → household run,
+household at 2176 draws/frame, 0 skipped, 0 `nopipeline` on the final check of the committed
+build; `docs/black-scene.md`);
 the intro movie, title, menus, save select, name entry and Create-a-Sim on screen
 (`docs/playtest.md` §1); a Sim saved and the household loaded; **the household on screen at
 2181 draws, 0 skipped, 0 `nopipeline`** (`out/shots/house3_house.png`, `out/shots/house3.log`,
@@ -318,13 +335,14 @@ entered through the game's own setter (`out/shots/ui2.log`).
 
 **Not proven (unproven list):**
 
-- **The allocation-ordering defect in `UploadAlloc`/`AllocDrawSet`** — described under
-  "Open renderer defects" above; being fixed in parallel, not yet exercised after the fix.
 - **A real controller / gamepad** — none has ever been plugged into this machine
   (`/dev/input/by-id/` holds only keyboard and mice; no `controller … plugged in` log line);
   the SDL gamepad path is reviewed, not exercised (`docs/playtest.md`).
-- **Hor+ ultrawide** — not implemented. Today the picture is pillarboxed at the title's own
-  4:3 on a wider display; a wider display shows black bars, not more world.
+- **Hor+ ultrawide** — not implemented, and a known gap the owner has asked for, not a
+  design choice (`docs/ultrawide.md`). Today the picture is pillarboxed at the title's own
+  4:3 on a wider display; a wider display shows black bars, not more world. The staged
+  stage-(a)-only attempt was reverted (superproject `b3b1762`); the clean route through
+  the title's native widescreen aspect getter is recorded in `docs/guest-projection.md`.
 - **Saving and reloading through visible play** — a Sim was saved and **Continue** reloads
   the household, and the household is now visible, but playing, saving again and reloading
   through visible gameplay have not been observed end to end.

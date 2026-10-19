@@ -26,8 +26,8 @@ namespace overlay {
 namespace {
 
 // the guest creates its device at 640x480 once and never resizes it, so the host frame target is
-// that, widened for ultrawide, times the render scale; the inner rounding happens in guest
-// pixels, before the scale
+// that times the render scale, widened for ultrawide only on a backend that actually
+// widens (see BackendWiden, D9); the inner rounding happens in guest pixels, before the scale
 constexpr float kGuestW = 640.0f, kGuestH = 480.0f;
 
 constexpr int kSamples = 120;  // frame times behind the graph, two seconds at 60 fps
@@ -191,7 +191,19 @@ const char* AspectName(float a) {
     return nullptr;
 }
 
-// the host frame target for a render scale, exactly as CreateTargetResource builds it
+// D9: Hor+ widening is a backend property, not a settings property. The Windows
+// D3D12 backend widens its frame target by app::AspectWiden(); the Vulkan backend
+// (WidensFrame()==false, vulkan.cpp's WidenedGuestWidth) builds the unwidened guest
+// width, so on that path the panel must not report a widened target that was never built.
+float BackendWiden() {
+#if defined(_WIN32)
+    return app::AspectWiden();
+#else
+    return 1.0f;
+#endif
+}
+
+// the host frame target for a render scale, exactly as the active backend builds it
 void FrameTarget(float scale, float widen, uint32_t& w, uint32_t& h) {
     long guest_w = std::lround(kGuestW * widen);
     w = uint32_t(std::max<long>(std::lround(guest_w * scale), 1));
@@ -243,7 +255,7 @@ void DrawPerf(double fps) {
     float widen = app::AspectWiden();
     float scale = app::RenderScale(uint32_t(kGuestH));
     uint32_t rw = 0, rh = 0;
-    FrameTarget(scale, widen, rw, rh);
+    FrameTarget(scale, BackendWiden(), rw, rh);  // D9: the target the backend actually builds
     float aspect = app::Widescreen() ? 16.0f / 9.0f * widen : 4.0f / 3.0f;
 
     const float col = ImGui::CalcTextSize("render ").x;
@@ -468,7 +480,7 @@ void DrawQuality() {
     app::Mode out = g_draft.width && g_draft.height ? app::Mode{g_draft.width, g_draft.height} : g_desktop;
     float scale = std::max(out.height * (g_draft.render_percent / 100.0f) / kGuestH, 0.1f);
     uint32_t rw = 0, rh = 0;
-    FrameTarget(scale, app::AspectWiden(), rw, rh);
+    FrameTarget(scale, BackendWiden(), rw, rh);  // D9
     char text[80];
     std::snprintf(text, sizeof text, "%u x %u frame target, from the guest's 640 x 480.", rw, rh);
     Note(text);

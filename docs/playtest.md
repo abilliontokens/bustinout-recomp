@@ -41,7 +41,7 @@ movie (1 draw) from a menu (tens) from a 3-D scene (hundreds+).
 | "Enter your Sim's first name" (default **Pat**) | `out/shots/loop_firstname.png` | 476 |
 | Create-a-Sim ("CREATE A SIM" / "Customize A Sim", Sim on the rug, five category icons, B BACK / A SELECT) | `out/shots/step3_afterA3.png`, `out/shots/loop_createasim.png` | 328–480 |
 | "Are you sure you want to save and continue with this Sim?" | `out/shots/loop3_s2.png` | 66 |
-| **Household scene loaded** — the furthest state; it renders into the host target but **presents black** (defect D2 below) | black: `out/shots/loop2_s6.png`; scene in target: `out/build/linux-verbose/cap_house/front_05700_host.bmp` | 2076–2178 |
+| **Household scene loaded** — the furthest state; it renders into the host target but presented black (defect D2 below, since fixed — the household now presents on screen) | black: `out/shots/loop2_s6.png`; scene in target: `out/build/linux-verbose/cap_house/front_05700_host.bmp` | 2076–2178 |
 
 Menu facts learned by driving them (pad tokens, one press per screenshot):
 the main menu opens on its first item; **Bust Out → Select Save**; an empty slot →
@@ -84,7 +84,7 @@ release HDD gained no save in 260 s, so the trap point was never reached. The
 loop only proves something when the drive is known to pass the trap point;
 the attended `SIMSBO_STEP` walk is what reached it.
 
-### D2 — household scene renders into the front target but presents black (OPEN, renderer)
+### D2 — household scene renders into the front target but presents black (FIXED, sdk `4888bc1` completed by `e809cd4` — see `docs/black-scene.md`)
 
 The loaded household (a club lot: dance floor, sofas, several Sims) submits
 correctly and never reaches the screen; every menu and the CAS room present fine.
@@ -97,4 +97,10 @@ whoever takes the renderer next**:
    (`out/shots/loop3.log`), drive pad tokens: START, START (title → main menu),
    A (Continue → Select Save), A (Sim 1 → Customize), RIGHT×3, A (checkmark),
    A (YES). ~30 s later the draws jump to ~2076/frame and
-...[truncated 9119 chars]
+
+The cause, when it was fixed: the per-frame descriptor pool was created with a
+2048-set cap against a household frame that needs ~2200, so allocations failed part
+way through every frame and the present blit was dropped along with the tail of the
+draws. Sized for the real scene (sdk `4888bc1`), with the allocation-ordering guard
+added on top (`e809cd4`), the household presents on screen; the symptom description
+above is kept as the record of how it was localised.
