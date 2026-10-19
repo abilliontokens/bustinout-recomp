@@ -357,7 +357,13 @@ void DrawDisplay() {
     int mode = int(g_draft.mode);
     if (ImGui::Combo("##mode", &mode, kModeNames, int(std::size(kModeNames)))) g_draft.mode = app::DisplayMode(mode);
 
+    // Borderless always fills the display it is on (main_sdl.cpp's ApplyNow, main.cpp's
+    // ApplyNow alike), so a chosen resolution can never size its window: the control is
+    // greyed there rather than offered and silently ignored. It stays editable in the
+    // two modes that honour it, and the stored value survives a mode switch.
+    const bool borderless = g_draft.mode == app::DisplayMode::Borderless;
     Row("Resolution");
+    ImGui::BeginDisabled(borderless);
     char text[48];
     if (g_draft.width && g_draft.height) std::snprintf(text, sizeof text, "%u x %u", g_draft.width, g_draft.height);
     else std::snprintf(text, sizeof text, "Desktop (%u x %u)", g_desktop.width, g_desktop.height);
@@ -373,8 +379,12 @@ void DrawDisplay() {
         }
         ImGui::EndCombo();
     }
-    Note("Windowed sizes the window and fullscreen switches the display mode; borderless always "
-         "fills the monitor and takes this as the render size alone.");
+    ImGui::EndDisabled();
+    Note(borderless ? "Borderless follows the display, so no resolution applies here. Choose "
+                      "Windowed or Fullscreen to set one."
+                    : "Windowed sizes the window to this. Fullscreen presents at this size: a real "
+                      "display-mode switch where the platform allows one, scaled to the display "
+                      "where it does not (Wayland). Desktop is the display's own size.");
 
     Row("Aspect ratio");
     if (ImGui::BeginCombo("##aspect", g_draft.aspect)) {
