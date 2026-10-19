@@ -4,7 +4,6 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "app/platform.h"
 #include "cpu/x86_ops.h"
 #include "xdk/hle.h"
 
@@ -163,39 +162,4 @@ X86_FUNC(sub_00123430) {
     X86_MEM8(frame + 0x5u) = 1;
     __imp__sub_00123430(ctx, base);  // pops its own return
     X86_MEM8(frame + 0x5u) = fixed_step;
-}
-
-// The video aspect getter, sub_001287C0(this in ecx, float returned in st(0),
-// plain retn at 0x12881A): the video object's vtable off_2ECA78 slot +0x90. It
-// returns the float at 0x2ECB74 (16:9) when the dashboard widescreen byte at
-// [this+0x274] is set, else the present width over height from vtable +0x94 /
-// +0x98. Every projection in the title is built from this one number:
-// sub_00130BC0 sets m[0] = cot / aspect at 0x130C5F with m[5] = cot at
-// 0x130C61, so the horizontal field derives from the vertical by this divisor
-// alone and changing only the divisor is Hor+ with the vertical bit-identical.
-// No 2-D path reads it: menus, HUD, dialogue and the movie are placed through
-// c121..c124 (sub_00171A30, program 0x30B8A0) in guest pixel coordinates.
-//
-// On Linux the host therefore hands the title the aspect the widened frame
-// target is actually presented at, app::platform::FrameAspect(), whenever
-// ultrawide is on or an aspect_ratio is chosen; the Vulkan target grows by
-// FrameWiden() over 4:3, the XDK centre shift moves the fold and (stage b)
-// the 2-D placement by half the gained width, and the present shows the
-// target at that same aspect, so the world opens at the sides while every
-// 2-D element keeps its guest size. With auto and ultrawide off FrameAspect()
-// is 0 and the title's own value stands, exactly as before. Windows keeps the
-// D3D12 backend's own widening and the title's value. SIMSBO_NO_WIDE=1 calls
-// the original for the whole run, for bisection without a rebuild.
-X86_FUNC(__imp__sub_001287C0);
-X86_FUNC(sub_001287C0) {
-#if !defined(_WIN32)
-    if (!HookOff("SIMSBO_NO_WIDE")) {
-        if (float aspect = app::platform::FrameAspect(); aspect > 0) {
-            x87_push(ctx, double(aspect));  // fld, as the original leaves it
-            ctx.esp += 4;                   // plain retn
-            return;
-        }
-    }
-#endif
-    __imp__sub_001287C0(ctx, base);
 }
