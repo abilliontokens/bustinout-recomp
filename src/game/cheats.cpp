@@ -108,10 +108,14 @@ constexpr uint32_t kPadManager = 0x35D3F0u;
 constexpr uint32_t kEnterCode = 0x72010u;
 constexpr hle::Map kEnterAbi = hle::Make({hle::ecx, hle::stack});
 
+// R9: the latch is on a different page from the options object, so it is validated on its own.
+// Unreadable counts as set: the game never takes codes without having read it clear.
+bool LatchClear() { return GuestPtr(kLatch, 1) && *static_cast<const uint8_t*>(kernel::HostPtr(kLatch)) == 0; }
+
 // the cheat mask as the gnome sees it: the latch hides it, exactly as sub_00071FC0 does
 uint32_t GameMask() {
     if (!GuestPtr(kOptions, 0x78)) return 0;
-    if (*static_cast<const uint8_t*>(kernel::HostPtr(kLatch)) != 0) return 0;
+    if (!LatchClear()) return 0;
     return kernel::R16(kMask);
 }
 
@@ -139,9 +143,13 @@ std::atomic<uint32_t> g_toggle{0};
 void EnterPending(X86Context& ctx) {
     const uint32_t pending = g_toggle.exchange(0, std::memory_order_relaxed);
     if (!pending) return;
-    const bool latch_clear = *static_cast<const uint8_t*>(kernel::HostPtr(kLatch)) == 0;  // 0x122CB
-    const bool pads = kernel::R32(kPadManager) != 0;                                      // 0x122DE
-    const bool recogniser = kernel::R32(ctx.ecx + 0x1E4u) != 0;                           // 0x12372
+    // R9: every address is validated before it is read; the recogniser's address comes from the
+    // guest's ecx, so its +0x1E4 field is checked as the pointer it is
+    const bool latch_clear = LatchClear();                                                       // 0x122CB
+    const bool pads = GuestPtr(kPadManager, 4) && kernel::R32(kPadManager) != 0;                 // 0x122DE
+    const uint32_t recogniser_at = ctx.ecx + 0x1E4u;
+    const bool recogniser = recogniser_at >= ctx.ecx && GuestPtr(recogniser_at, 4) &&
+                            kernel::R32(recogniser_at) != 0;                                     // 0x12372
     if (!latch_clear || !pads || !recogniser) {
         LOGI("cheats: codes %02X not entered, the game was not in a state to take them", pending);
         return;
@@ -169,7 +177,7 @@ namespace cheats {
 
 bool InGame() {
     if (!GuestPtr(kOptions, 0x78)) return false;
-    if (*static_cast<const uint8_t*>(kernel::HostPtr(kLatch)) != 0) return false;
+    if (!LatchClear()) return false;
     // the table is built in code at startup: its combined mask is zero until sub_000720A0 has run
     return kernel::R16(kValidMask) != 0;
 }

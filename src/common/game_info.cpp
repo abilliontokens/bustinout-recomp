@@ -1,5 +1,6 @@
 #include <atomic>
 #include <chrono>
+#include <mutex>
 #include <cstdlib>
 #include <cstring>
 
@@ -31,6 +32,10 @@ bool StepPad(int port, input::Pad& pad) {
     static const char* path = std::getenv("SIMSBO_STEP");
     if (!path || !path[0] || port != 0) return false;
     using namespace std::chrono;
+    // R10: the pad hook runs outside input::g_lock and the title may poll from more than one guest
+    // thread; the token and its two timestamps change together, so every poll holds this lock
+    static std::mutex lock;
+    std::lock_guard<std::mutex> guard(lock);
     static std::string held;
     static int64_t last_read = 0, held_since = 0;
     const int64_t now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
