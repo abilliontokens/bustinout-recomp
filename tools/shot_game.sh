@@ -7,9 +7,16 @@
 #   tools/shot_game.sh <tag> [build dir]
 #
 # Screens land in out/shots/<tag>_<what>.png, the game's stdout in out/shots/<tag>.log.
-# The walk is the one docs/playtest.md records: the intro movies run ~45 s, then
-# START START (title -> main menu), A (Continue -> Select Save), A (Sim 1 ->
-# Customize), RIGHT x3 (to the confirm icon), A (save question), A (YES) -> household.
+#
+# The drive is per screen, not on a timer: after every press the script screenshots,
+# classifies what is actually on screen (tools/classify_screen.py), and only then
+# presses the next key. Menu transitions swallow presses (seen twice in attended
+# runs), so a fixed schedule drifts; this loop retries the press that a transition
+# ate and refuses to advance until the expected screen is showing. The walk itself
+# is the one docs/playtest.md records: START (title -> main menu), A (Continue or
+# Bust Out -> Select Save), A (saved Sim -> Customize, or an empty slot -> name
+# entry -> A accepts each default name -> Create-a-Sim), RIGHT x3 (confirm icon),
+# A (save question), A (YES) -> household, A dismisses the greeting dialogue.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -27,41 +34,95 @@ export XBE_PERF=1 XBE_MUTE=1
 mkdir -p out/shots
 [ -e "$BUILD/assets" ] || ln -sfn ../../../assets "$BUILD/assets"
 
+STEP="$(mktemp /tmp/simsbo-step.XXXXXX)"
+export SIMSBO_STEP="$STEP"
 LOG="out/shots/${TAG}.log"
 : > "$LOG"
 "./$BUILD/SimsBustinOut" >> "$LOG" 2>&1 &
 PID=$!
-trap 'kill -KILL "$PID" 2>/dev/null' EXIT
-echo "launched pid $PID"
+cleanup() { kill -KILL "$PID" 2>/dev/null; rm -f "$STEP"; }
+trap cleanup EXIT
+echo "launched pid $PID (step file $STEP)"
 
-shot() { spectacle -b -n -f -o "out/shots/${TAG}_$1.png" >/dev/null 2>&1; echo "shot $1"; }
+shot() { spectacle -b -n -f -o "out/shots/${TAG}_$1.png" >/dev/null 2>&1; }
 alive() { kill -0 "$PID" 2>/dev/null; }
+press() { printf '%s' "$1" > "$STEP"; sleep 2; printf 'NONE' > "$STEP"; }
+screen() { # classify the newest screenshot -> state word on stdout
+    shot probe
+    python3 tools/classify_screen.py "out/shots/${TAG}_probe.png" 2>/dev/null || echo unknown
+}
 
-sleep 18; alive || { echo "died before the intro"; exit 1; }
-shot intro
+# Wait until classify says one of the given states (re-screenshotting), or give up.
+wait_for() {
+    local want="$1" tries="${2:-40}" s i
+    for ((i = 0; i < tries; i++)); do
+        alive || { echo "died while waiting for $want"; return 1; }
+        s="$(screen)"
+        case " $want " in *" $s "*) echo "screen: $s"; return 0 ;; esac
+        sleep 3
+    done
+    echo "timed out waiting for $want (last seen: $s)"
+    return 1
+}
 
-# the intro movies run about 45 s; Start skips to the title
-sleep 24; alive || { echo "died during the intro"; exit 1; }
-tools/drive_keys.py --delay 1.4 START START >/dev/null 2>&1
-sleep 2; shot menu
+# Press a key until the screen becomes one of the given states.
+press_until() {
+    local key="$1" want="$2" tries="${3:-6}" s i
+    for ((i = 0; i < tries; i++)); do
+        press "$key"
+        if wait_for "$want" 8; then return 0; fi
+        echo "press $key ($((i + 1))/$tries) did not reach $want, retrying"
+    done
+    echo "could not reach $want with $key"
+    return 1
+}
 
-# Continue -> Select Save -> Sim 1 -> Customize
-tools/drive_keys.py --delay 1.6 A A >/dev/null 2>&1
-sleep 3; shot saveselect
+# 1. intro movies (skippable with START) -> title -> main menu
+wait_for "intro blue" 30 || exit 1
+press_until START "blue" || exit 1
+shot menu
 
-# right to the confirm icon, accept, then YES
-tools/drive_keys.py --delay 1.2 RIGHT RIGHT RIGHT >/dev/null 2>&1
-sleep 1; shot cas
-tools/drive_keys.py --delay 2.0 A A >/dev/null 2>&1
+# 2. main menu -> Select Save (Continue when a save exists, else Bust Out; both
+#    land on Select Save with the first slot highlighted)
+press_until A "name cas" || exit 1
 
-# the household load takes a while
-sleep 35; alive || { echo "died loading the household"; exit 1; }
+# 3. Select Save -> name entry (empty slot) or straight to Create-a-Sim (saved Sim)
+s="$(screen)"
+if [ "$s" = name ]; then
+    shot name
+    press_until A "name cas" || exit 1   # last name accepted (cursor starts on ENTER)
+    press_until A "cas" || exit 1        # first name accepted
+fi
+wait_for "cas" 20 || exit 1
+shot cas
+
+# 4. Create-a-Sim: RIGHT x3 to the confirm icon, A, then A (YES) -> household
+press RIGHTx3
+wait_for "cas" 6 || exit 1
+press_until A "question" || exit 1
+shot question
+press_until A "house dialogue loading" || exit 1
+
+# 5. the household load takes a while; a greeting dialogue may be up first
+wait_for "house dialogue" 40 || exit 1
+if [ "$(screen)" = dialogue ]; then
+    shot dialogue
+    press A
+    wait_for "house" 15 || exit 1
+fi
 shot house
 sleep 8; shot house2
 
-kill -TERM "$PID" 2>/dev/null; sleep 2; kill -KILL "$PID" 2>/dev/null
-trap - EXIT
+# KEEP=1 leaves the game up and in the household, so the owner can take it over
+# from the state the drive reached instead of starting the walk again by hand.
+if [ -n "${KEEP:-}" ]; then
+    trap - EXIT; rm -f "$STEP"
+    echo "left running in game as pid $PID (KEEP=1)"
+else
+    kill -TERM "$PID" 2>/dev/null; sleep 2
+    trap - EXIT; cleanup
+fi
 echo "--- draws/frame seen ---"
-grep -o 'per frame [0-9]* draws' "$LOG" | sort -u | tail -5
+grep -o 'per frame [0-9]* draws.*stalealloc [0-9]*' "$LOG" | tail -2
 echo "--- present geometry ---"
 grep -o 'vulkan: present .*' "$LOG" | tail -1

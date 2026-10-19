@@ -19,6 +19,9 @@
 #include <imgui.h>
 
 #include "app/app.h"
+#if !defined(_WIN32)
+#include "app/platform.h"  // app::HostAspect
+#endif
 #include "gpu/backend.h"
 
 namespace overlay {
@@ -191,15 +194,16 @@ const char* AspectName(float a) {
     return nullptr;
 }
 
-// D9: Hor+ widening is a backend property, not a settings property. The Windows
-// D3D12 backend widens its frame target by app::AspectWiden(); the Vulkan backend
-// (WidensFrame()==false, vulkan.cpp's WidenedGuestWidth) builds the unwidened guest
-// width, so on that path the panel must not report a widened target that was never built.
+// Hor+ widening is a backend property, not a settings property. The Windows
+// D3D12 backend widens its frame target by app::AspectWiden(); the Vulkan
+// backend widens it to app::HostAspect() at the same height (0 = unwidened).
+// The panel reports the widening the active backend actually builds.
 float BackendWiden() {
 #if defined(_WIN32)
     return app::AspectWiden();
 #else
-    return 1.0f;
+    float aspect = app::HostAspect();
+    return aspect > 0.0f ? aspect * (kGuestH / kGuestW) : 1.0f;
 #endif
 }
 
@@ -252,11 +256,16 @@ void DrawPerf(double fps) {
     ImGui::PlotLines("##frametime", g_ring.ms, g_ring.count, g_ring.count == kSamples ? g_ring.next : 0, graph,
                      0.0f, hi * 1.25f + 1.0f, {ImGui::GetContentRegionAvail().x, 44.0f * g_ui_scale});
 
-    float widen = app::AspectWiden();
+    float widen = BackendWiden();
     float scale = app::RenderScale(uint32_t(kGuestH));
     uint32_t rw = 0, rh = 0;
-    FrameTarget(scale, BackendWiden(), rw, rh);  // D9: the target the backend actually builds
-    float aspect = app::Widescreen() ? 16.0f / 9.0f * widen : 4.0f / 3.0f;
+    FrameTarget(scale, widen, rw, rh);  // D9: the target the backend actually builds
+#if defined(_WIN32)
+    float aspect = app::Widescreen() ? 16.0f / 9.0f * app::AspectWiden() : 4.0f / 3.0f;
+#else
+    float host_aspect = app::HostAspect();
+    float aspect = host_aspect > 0.0f ? host_aspect : (app::Widescreen() ? 16.0f / 9.0f : 4.0f / 3.0f);
+#endif
 
     const float col = ImGui::CalcTextSize("render ").x;
     char value[48];

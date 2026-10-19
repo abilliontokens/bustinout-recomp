@@ -6,6 +6,12 @@
 
 #include "cpu/x86_ops.h"
 #include "xdk/hle.h"
+#if !defined(_WIN32)
+#include <cmath>
+
+#include "app/platform.h"  // app::HostAspect
+#include "core/log.h"
+#endif
 
 // the frame step the engine is working with, seconds, published by sub_001232F0 below
 namespace {
@@ -163,3 +169,46 @@ X86_FUNC(sub_00123430) {
     __imp__sub_00123430(ctx, base);  // pops its own return
     X86_MEM8(frame + 0x5u) = fixed_step;
 }
+
+#if !defined(_WIN32)
+// The aspect getter, sub_001287C0 (video vtable off_2ECA78 slot +0x90, this in
+// ecx, float returned on the x87 stack, plain ret). It is the title's one
+// aspect source: docs/guest-projection.md proves every projection builder
+// (sub_00130BC0 via sub_001341F0: m[0] = cot / aspect, m[5] = cot) takes its
+// aspect from here, and no 2-D, HUD, text or movie path reads it or the
+// widescreen byte behind it. The dashboard byte already reports widescreen on
+// this host (the kernel's ExQueryNonVolatileSetting 8 answer), so the authored
+// return is already 1.7777778; wider than 16:9 has no title mode.
+//
+// Host Hor+: when app::HostAspect() is active (ultrawide on, aspect wider than
+// 16:9), calls that reach the getter from the projection path get the widened
+// frame's aspect instead - the same number the Vulkan frame target is built
+// at (lround(height * aspect) / height over the guest's present height), so
+// the projection, the target and the present agree exactly and only the
+// horizontal field of view grows; m[5] (vertical) is bit-identical. The gate
+// is the guest return address: only the proven projection call sites below
+// (docs/widescreen-flag.md) see the widened aspect, every other caller - and
+// every call with widening off - runs the recompiled getter untouched.
+// SIMSBO_NO_WIDE=1 bisects the override off without a rebuild.
+X86_FUNC(__imp__sub_001287C0);
+X86_FUNC(sub_001287C0) {
+    const float aspect = HookOff("SIMSBO_NO_WIDE") ? 0.0f : app::HostAspect();
+    if (aspect <= 0.0f) { __imp__sub_001287C0(ctx, base); return; }
+    // Return addresses of the `call [reg+0x90]` sites that feed a projection
+    // builder: the four camera setters and sub_0001D870's second view.
+    static constexpr uint32_t kProjectionReturns[] = {0x15488u, 0x164B6u, 0x16723u, 0x16C96u,
+                                                      0x1DBA4u, 0x1DEECu, 0x1E424u, 0x1E44Bu,
+                                                      0x1E5A4u, 0x1E5CBu};
+    const uint32_t ret = X86_MEM32(ctx.esp);
+    bool projection = false;
+    for (uint32_t site : kProjectionReturns) projection |= ret == site;
+    LOG_FIRST(16, "simsbo aspect: getter called from %08X (%s), host aspect %.4f", ret,
+              projection ? "projection path" : "authored", double(aspect));
+    __imp__sub_001287C0(ctx, base);  // authored value on the x87 stack, esp past the return
+    if (!projection) return;
+    const uint32_t height = X86_MEM32(ctx.ecx + 0x248u);  // present height ([this+146], getter +0x98's field)
+    if (!height) return;
+    const uint32_t wide_w = uint32_t(std::lround(float(height) * aspect));
+    X87_ST(0) = double(float(wide_w) / float(height));
+}
+#endif
