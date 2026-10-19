@@ -1,5 +1,14 @@
 # Windows target audit (read-only, no Windows compiler on this machine)
 
+> **Outcome, after this audit:** the Windows target has since been cross-compiled on this box
+> (clang-cl + lld-link, MSVC CRT/STL 14.44.17.14, Windows SDK 10.0.26100; `docs/toolchain.md`).
+> It compiled and linked with no source change: no Windows translation unit references
+> `app::platform::*`, `image_decode.cpp` was already out of the Windows list, the
+> `<cstdlib>`/`<cstring>` suspects compiled, and the legacy `ImGui_ImplDX12_Init` overload
+> compiles under 1.91.9b defaults. The one Windows-reachable defect showed only at run time,
+> under Wine: the vertex-program prelude's `1.#INF` literal, which vkd3d-shader rejects, is now
+> spelled `asfloat(0x7F800000)` (`runtime/gpu/shaders.cpp`). Nothing has run on Windows itself.
+
 Scope: every SDK change since the fork point `30124a8` in `sdk/` (6 commits,
 `30124a8..7f2e294`; `git -C sdk diff 30124a8..HEAD` = 37 files, +5516/−147), plus this
 repo's `build.bat`, `release.bat`, `CMakePresets.json`, `CMakeLists.txt` and the game-side

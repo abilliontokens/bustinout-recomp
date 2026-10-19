@@ -352,9 +352,10 @@ entered through the game's own setter (`out/shots/ui2.log`).
   pad button auto-repeat; camera zoom, idle auto-return and shot-mode glide; the menu
   held-direction repeat gate. None could be proven per-call in this image, so none was
   wrapped; they are to be re-hunted in visible play.
-- **The Windows target** — Direct3D 12 + XAudio2; it has **never been compiled**, because this
-  Linux box has no MSVC or Windows SDK (`docs/toolchain.md`, `docs/windows-target.md`).
-  All `_WIN32` paths are untested.
+- **The Windows target on Windows** — Direct3D 12 + XAudio2. The exe cross-compiles and
+  links on this Linux box (`windows-cross` preset, `docs/toolchain.md`) and runs under
+  Wine 11.20 into Create-a-Sim, but Wine's D3D12 is vkd3d over Vulkan, not Microsoft's
+  runtime. It has never run on Windows, and the native `build.bat` route has never been run.
 
 ## Operational hazards
 

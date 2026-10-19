@@ -141,6 +141,7 @@ which treat `"0"` as off (`sdk/runtime/audio/sdl_audio.cpp`, `src/game/hooks.cpp
 
 ```
 assets/        your disc image and/or the files extracted from it (never committed)
+cmake/         windows-cross.cmake - clang-cl + xwin toolchain for building the Windows exe on Linux
 config/        game.toml - the recompiler config written by xbe_symbols, then hand-corrected
 docs/          analysis and bring-up notes
 sdk/           XboxXBERecomp SDK checkout (recompiler, runtime, XDK HLE, renderers)
@@ -178,9 +179,9 @@ You supply the game: the USA Xbox release, in one of two supported shapes:
    The SHA-1 must match the table above.
 4. Build for your platform:
 
-   **Windows** (Direct3D 12 / XAudio2) — **untested: never compiled.** No one has built or
-   run this target; this machine has no MSVC or Windows SDK (`docs/toolchain.md`), so treat
-   every Windows instruction below as the intended path, not a verified one:
+   **Windows** (Direct3D 12 / XAudio2) — **never run on Windows.** The exe has only been
+   cross-compiled on Linux (`windows-cross` preset; commands in `docs/toolchain.md`) and run
+   under Wine; the native route below has never been run:
    ```
    tools\env.bat
    build.bat

@@ -36,3 +36,9 @@ settings.toml
 # Local temporary folder
 .local
 __pycache__/
+
+# Release artifacts: built by release.sh / release.bat, attached to a GitHub
+# release, never committed. An 11 MB tarball slipped into a commit once.
+/SimsBustinOut-linux-x64.tar.zst
+/SimsBustinOut-win64.zip
+/SimsBustinOut.zip
