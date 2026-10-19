@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
-"""Classify a full-screen screenshot of the running port into a walk state.
+"""Classify a screenshot of the running port's window into a walk state.
 
 Usage: classify_screen.py <png>  ->  one word on stdout:
   intro | blue | saveselect | name | cas | question | house | dialogue | unknown
 
+The input is a capture of the game WINDOW (tools/shot_game.sh uses spectacle
+-a). It used to be a capture of the whole desktop, and picture() had to find
+the game inside it by looking for bright columns - which finds the wallpaper
+instead as soon as the game is windowed on anything but a black desktop. That
+misread a loaded household as "intro" through six retries. All this has to do
+now is trim the pillarbox or letterbox the present leaves inside the window.
+
 "blue" covers the title and the main menu (both are blue-gradient screens the
-walk treats alike: START then A). The game picture is centred in the display;
-probes are taken relative to the picture rectangle actually found, so this
-works at any window size and in the pillarboxed and widened shapes alike. The
-probes are coarse colour facts measured on the real screens (docs/playtest.md):
-the name keyboard is a bright-lettered grid low in a dark picture, the
-household is a dark lot whose clock pill is bright blue at the picture's top
-right, its greeting dialogue is a bright translucent panel in the centre, and
-Create-a-Sim is a warm brown room whose save question covers the centre in
-blue.
+walk treats alike: START then A). The probes are coarse colour facts measured
+on the real screens (docs/playtest.md): the name keyboard is a bright-lettered
+grid low in a dark picture, the household is a lot whose clock pill is bright
+blue at the picture's top right, its greeting dialogue is a bright translucent
+panel in the centre, and Create-a-Sim is a warm brown room whose save question
+covers the centre in blue.
 """
 import sys
 
@@ -22,16 +26,19 @@ from PIL import Image
 
 
 def picture(img):
-    """The centred non-black game picture, ignoring the desktop taskbar."""
-    h, w, _ = img.shape
-    body = img[: int(h * 0.92)]
-    colmean = (body.sum(axis=2) > 60).mean(axis=0)
-    bright = np.where(colmean > 0.5)[0]
-    if len(bright) < 50:
+    """The game picture inside the window capture, without its bars.
+
+    Trims whole rows and columns that are essentially black: the pillarbox at
+    4:3 or 16:9 on a wider window, the letterbox the other way, and the window
+    manager's own border. A mostly-black frame (a movie, a loading screen)
+    trims to nothing, which the caller reads as "intro".
+    """
+    lit = img.sum(axis=2) > 60
+    cols = np.where(lit.mean(axis=0) > 0.08)[0]
+    rows = np.where(lit.mean(axis=1) > 0.08)[0]
+    if len(cols) < 50 or len(rows) < 50:
         return None
-    rowmean = (img.sum(axis=2) > 60).mean(axis=1)
-    rows = np.where(rowmean > 0.2)[0]
-    return img[rows[0]:rows[-1], bright[0]:bright[-1]]
+    return img[rows[0]:rows[-1] + 1, cols[0]:cols[-1] + 1]
 
 
 def main() -> int:

@@ -44,7 +44,13 @@ cleanup() { kill -KILL "$PID" 2>/dev/null; rm -f "$STEP"; }
 trap cleanup EXIT
 echo "launched pid $PID (step file $STEP)"
 
-shot() { spectacle -b -n -f -o "out/shots/${TAG}_$1.png" >/dev/null 2>&1; }
+# The game window, not the desktop. A full-desktop shot forces the classifier to
+# find the picture inside it, which works only while the game is borderless and
+# the desktop around it is black; windowed on a bright wallpaper it found the
+# wallpaper instead and called a loaded household "intro" for six retries. The
+# game holds focus for the whole drive (the keys are synthetic, nothing else is
+# clicked), so the active window is the game.
+shot() { spectacle -b -n -a -o "out/shots/${TAG}_$1.png" >/dev/null 2>&1; }
 alive() { kill -0 "$PID" 2>/dev/null; }
 press() { printf '%s' "$1" > "$STEP"; sleep 2; printf 'NONE' > "$STEP"; }
 screen() { # classify the newest screenshot -> state word on stdout
