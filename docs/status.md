@@ -16,8 +16,8 @@ in play it is marked **not proven** — see the last section, which is the autho
 | Recompilation | 27,492 functions, 894,565 instructions (`generated/game/x86_recomp_stats.txt`) |
 | Native Linux build | Builds and links; verbose binary `out/build/linux-verbose/SimsBustinOut` (112,107,496 bytes in the recorded run, log line 3 of `out/build/linux-verbose/logs/simsbo_001.log`) |
 | Launch (Linux) | Boots, loads the game, opens its window, presents swaps, plays SDL3 audio and opens the intro XMV (`out/build/linux-verbose/logs/simsbo_001.log`) |
-| Picture on screen | **Proven for intro, menus and Create-a-Sim.** `out/shots/final_20s.png` (3440x1440) shows the intro whole and pillarboxed 4:3; menus/CAS screenshots in `docs/playtest.md` §1 |
-| Furthest state | **A loaded household at 2076–2178 draws/frame, 113k verts** (`docs/playtest.md` §1, `out/shots/loop2.log`/`loop3.log`) — it renders into the host target but **presents black** (open defect D2) |
+| Picture on screen | **Proven for intro, menus, Create-a-Sim and the household.** `out/shots/final_20s.png` (3440x1440) shows the intro whole and pillarboxed 4:3; menus/CAS screenshots in `docs/playtest.md` §1; `out/shots/house3_house.png` shows the household (club, Sims, HUD, dialogue) |
+| Furthest state | **A loaded, playable household at 2181 draws/frame, 113k verts, 0 skipped, 0 `nopipeline`** (`out/shots/house3.log`, `out/shots/house3_house.png`; evidence in `out/evidence/black-scene/after_house3/`) |
 | Frame step ("60+ fps") | **Measured 1.000 game-seconds per real second** at `fps_cap` 60, 144 and uncapped; `SIMSBO_NO_STEP=1` controls 1.112, 2.400, ~23.3 (`out/shots/probe_cap*_*.log`, `out/shots/probe_uncapped_*.log`; table below) |
 
 ## The XDK 5558 bootstrap
@@ -191,23 +191,59 @@ SDL (4,500 buffers, peak 0.4922 — not silence).
    the guest capture then matched `ffmpeg`'s decode of `sims_intro.xmv` frame 173 at 1.0x
    (MSE 0.4, 52.0 dB) instead of 2.0x (`docs/movie-draw.md`). The `d3d12.cpp` counterpart is
    written but never compiled.
+9. **Per-frame descriptor pool exhausted by a real scene — the household presented black
+   (SDK `4888bc1`, superproject `03bc027`).** *Symptom:* the loaded household rendered
+   into the host target (F3 target dumps showed the club scene) but presented pure
+   black, while menus and Create-a-Sim presented correctly. *Localisation:* guest
+   front-buffer captures in `out/evidence/black-scene/before_h5/` show the first
+   shrink sample of a target reading pixel mean 0.0 while a second sample of the same
+   image in the same `Present` reads 0.2468 and the full-resolution copy — which
+   needs no descriptor set — reads 0.2467 (`house5.log`: 2175 draws, 264 skipped);
+   `probe_h6/` (flush before the first sample) reads all three at 0.2462. Splitting
+   the old `nopipeline` counter showed `shader 0 pso 0 set 264`: no shader or
+   pipeline ever failed, the draws had no descriptor set, and
+   `vkAllocateDescriptorSets` returned `VK_ERROR_OUT_OF_POOL_MEMORY`
+   (-1000069000). *Cause:* the per-frame descriptor pool held only 2048 sets, but a
+   household frame submits ~2175 draws, each taking a set; allocation failed part
+   way through every frame, dropping 159–267 draws, and the present blit — which
+   takes its set from the same pool — was skipped silently, so the swapchain
+   received only the black clear plus the F2 ImGui panel (which has its own pool
+   and stayed visible, which is what made this look like a sampling/layout bug).
+   Menus and Create-a-Sim stay under 2048 sets, which is why only the household
+   bit. 2175 − 264 = 1911, matching the 1912 draws the earlier F3 capture listed.
+   *Fix:* the pool is sized by `kSetsPerSegment = 8192` sets (with matching
+   descriptor counts), a per-segment set counter is kept, `EnsureSetRoom()` submits
+   a full segment outside any render pass before work that allocates a set, and the
+   dropped-draw counter is split into `shader`/`pso`/`set` so the cause cannot be
+   mistaken again. *Evidence:* `out/evidence/black-scene/after_house3/` (both shrink
+   samples 0.301) and `out/shots/house3_house.png` — the club, the Sims, the HUD
+   (6:21 PM clock, simoleons) and an in-game dialogue card on screen, at 2181 draws,
+   0 skipped, 0 `nopipeline` (`out/shots/house3.log`). `out/shots/regress_pool_20s.png`
+   shows the intro movie still whole and correctly pillarboxed after the change.
+   This closes former defects D2 and D3 below; they were one defect, not two.
 
-## Open renderer defects (from `docs/playtest.md` §2)
+## Open renderer defects
 
-- **D2 — household presents black (OPEN, localised).** F3 capture
-  `out/build/linux-verbose/cap_house/054826/frame.txt` lists 1912 draws, all to render target
-  `0283C000` after a black clear; `final.bmp` and `front_05700_host.bmp` from the same target
-  show the club scene (pixel mean 0.388), while the guest-size `ShrinkImage` dump reads exact
-  0.0 black. The F2 ImGui panel is visible in the same swapchain pass
-  (`out/shots/loop3_f2.png`), so swapchain/present/UI work; menus and Create-a-Sim present
-  through identical code. Gamma is excluded (`gamma=0` on every present line in
-  `out/shots/loop3.log`) and inline-push-buffer geometry corruption is excluded (geometry and
-  textures land correctly in the target). Prime suspect recorded there and in
-  `VulkanBackend::PrepareBlitSource` (`sdk/runtime/gpu/vulkan.cpp`): image layout / DCC
-  visibility of a heavily-drawn target across the draw→blit boundary on RADV.
-- **D3 — dropped draws (OPEN, distinct from D2).** 159–267 draws per frame are skipped with
-  `nopipeline` in the household (`XBE_PERF=1` lines in `out/shots/loop2.log`/`loop3.log`), and
-  some Sims render as black silhouettes inside an otherwise correct target.
+- **Allocation ordering in `UploadAlloc`/`AllocDrawSet` (OPEN, being fixed in
+  parallel; found by code reading in `sdk/runtime/gpu/vulkan.cpp`, corroborated by
+  a pre-fix validation run).** Both read `Cur().used` / `Cur().pool` without
+  calling `EnsureRecording()`. After any `Submit` — a `ReadBackImage`, a `Sync`
+  flush, or the upload-reserve `Submit` inside `Draw` — `recording_` is false. If
+  the next `Draw` records nothing before them (`TransitionRaw` returns early when
+  the layout already matches), its constants and its descriptor set are allocated
+  from the stale upload offset and the un-reset pool. Then `BeginTargetPass`'s
+  `vkCmdBeginRenderPass(Cmd())` runs `EnsureRecording()`, which does
+  `vkResetDescriptorPool` and sets `used = 0`: the draw binds a set that was just
+  freed, and its constants are overwritten by later draws. The pre-existing
+  "flush and retry" fallback in `Draw` cannot work for the same reason — a flush
+  does not reset the pool. The validation run that corroborates it reported
+  `vkCmdBindDescriptorSets(): Couldn't find VkDescriptorSet …` and "uses set 0
+  but that set is not bound" right after `BlockOnResource` read-backs
+  (`out/evidence/black-scene/COORDINATION.txt`). Until that fix lands and is
+  exercised, long household play after read-backs is not proven free of it.
+
+Former defects D2 (household presents black) and D3 (159–267 dropped draws) are
+closed by item 9 above: they were the one descriptor-pool defect, not two.
 
 ## Frame-step measurement
 
@@ -258,8 +294,9 @@ quad, ~0.5 MB of texture upload a frame). SDL3 audio plays through the same run 
 `dsound: stream … rate=48000` and `audio: sdl submitted=… peak=0.4922` lines, quoted above).
 
 Menus, name entry and Create-a-Sim also present correctly on screen (`docs/playtest.md` §1).
-What this does **not** prove: visible household gameplay — that scene loads and draws but
-presents black (D2 above).
+**The household presents on screen**: `out/shots/house3_house.png` (3440x1440) shows the
+nightclub household — the club, Sims, the HUD (6:21 PM clock, simoleons) and an in-game
+dialogue card — at 2181 draws, 0 skipped, 0 `nopipeline` (`out/shots/house3.log`).
 
 ## What is proven / what is not exercised
 
@@ -269,34 +306,49 @@ address, 48 at `0`, 12 of 12 `[data]`, recounted from the file); 160/160
 kernel imports; recompilation (27,492 functions, 894,565 instructions,
 `generated/game/x86_recomp_stats.txt`); the Linux build; the boot sequence, swaps, device resets,
 disc reads, XMV open and SDL audio quoted above; the bring-up symbol fixes (`0x2283CD`,
-`D3DDevice_Reset`, D1 `0x66980`), the dirty-disc fix, and the renderer fixes (items 4–6 and 8);
+`D3DDevice_Reset`, D1 `0x66980`), the dirty-disc fix, and the renderer fixes (items 4–6, 8 and 9);
 the intro movie, title, menus, save select, name entry and Create-a-Sim on screen
-(`docs/playtest.md` §1); a Sim saved and the household loaded at 2076–2178 draws/frame;
+(`docs/playtest.md` §1); a Sim saved and the household loaded; **the household on screen at
+2181 draws, 0 skipped, 0 `nopipeline`** (`out/shots/house3_house.png`, `out/shots/house3.log`,
+`out/evidence/black-scene/after_house3/`) — this is where the former "household presents black"
+(D2) and dropped-draw (D3) items were proven fixed, by the descriptor-pool fix in item 9;
 the frame-step table above (1.000 at 60/144/uncapped, `out/shots/probe_*_*.log`);
 F1/F2 panels with live settings; keyboard-as-pad (arrows/Space/Esc/Enter); and Give Money
 entered through the game's own setter (`out/shots/ui2.log`).
 
 **Not proven (unproven list):**
 
-- **The household scene on screen** — it presents pure black although the host render target
-  holds the scene (open defect D2, localised above; `docs/playtest.md` §2).
-- **159–267 `nopipeline` dropped draws per frame** in the household, with some Sims as black
-  silhouettes in the target (open defect D3, distinct from D2).
+- **The allocation-ordering defect in `UploadAlloc`/`AllocDrawSet`** — described under
+  "Open renderer defects" above; being fixed in parallel, not yet exercised after the fix.
 - **A real controller / gamepad** — none has ever been plugged into this machine
   (`/dev/input/by-id/` holds only keyboard and mice; no `controller … plugged in` log line);
   the SDL gamepad path is reviewed, not exercised (`docs/playtest.md`).
 - **Hor+ ultrawide** — not implemented. Today the picture is pillarboxed at the title's own
   4:3 on a wider display; a wider display shows black bars, not more world.
-- **Saving and reloading through play** — a Sim was saved and **Continue** reloads the
-  household loader, but playing, saving again and reloading through visible gameplay have
-  not been observed (blocked by D2).
-- **Visible gameplay generally** — motives/HUD, walking, camera and per-call frame-rate
-  consumers at high fps (need the visible scene; `docs/frame-rate.md`, `docs/playtest.md`).
-- **The gnome menu offering Give Money in the house**, and the other seven cheat rows in
-  play — only Give Money's setter entry is logged (`docs/cheats.md`).
+- **Saving and reloading through visible play** — a Sim was saved and **Continue** reloads
+  the household, and the household is now visible, but playing, saving again and reloading
+  through visible gameplay have not been observed end to end.
+- **The remaining cheat rows in play** — the gnome menu offering Give Money in the house,
+  and the other seven cheat rows; only Give Money's setter entry is logged (`docs/cheats.md`).
+- **The per-call frame-rate consumers `docs/frame-rate.md` lists as unproven leads** —
+  pad button auto-repeat; camera zoom, idle auto-return and shot-mode glide; the menu
+  held-direction repeat gate. None could be proven per-call in this image, so none was
+  wrapped; they are to be re-hunted in visible play.
 - **The Windows target** — Direct3D 12 + XAudio2; it has **never been compiled**, because this
   Linux box has no MSVC or Windows SDK (`docs/toolchain.md`, `docs/windows-target.md`).
   All `_WIN32` paths are untested.
+
+## Operational hazards
+
+- **Never load the Vulkan validation layer on this machine.** It hard-froze the
+  machine twice (journal ends 06:47:47 in run `fix1` and 12:50:29 in run
+  `house5`), each less than 0.5 s after a periodic frame capture, with no kernel
+  message (`nowatchdog` on the boot command line). No run without the layer has
+  ever frozen. Do not set `XBE_VK_DEBUG=1`; use logging and capture dumps
+  instead. The same warning sits beside that variable in `README.md`.
+- **`tools/bringup_loop.sh` can report a false pass** (see `docs/gap-analysis.md`
+  §6 and the script's own header): `SIMSBO_AUTOSTART` never finishes Create-a-Sim
+  name entry, so a trap point past name entry is never reached unattended.
 
 ## Commands
 

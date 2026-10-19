@@ -5,16 +5,18 @@ produced by statically recompiling the game's x86 XBE with the
 [XboxXBERecomp SDK](https://github.com/TGP482/XboxXBERecomp) (vendored in `sdk/`).
 Windows uses Direct3D 12 and XAudio2; Linux is a native Vulkan and SDL3 build — no Wine.
 
-**Status: in progress — front end works, household presents black.** The native Linux build
+**Status: in progress — boots, renders, reaches playable gameplay.** The native Linux build
 boots, plays the intro movie whole and correctly proportioned (pillarboxed at the game's own
 4:3 on a wider display) with SDL3 audio, and drives title → main menu → save select → name
-entry → Create-a-Sim → save → a loaded household at 2076–2178 draws/frame
-(`docs/playtest.md`). That household renders into the host target but **presents pure black**
-(open defect D2 in `docs/status.md`), and 159–267 draws/frame are dropped as `nopipeline`
-(D3), so visible gameplay is not there yet. Game speed is measured at 1.000 game-seconds per
-real second at 60, 144 and uncapped fps. Hor+ ultrawide is not implemented (pillarboxed, not
-widened), no controller has ever been plugged into the test machine (gamepad unexercised),
-saving/reloading through visible play is unproven, and the Windows build has never been
+entry → Create-a-Sim → save → a loaded, playable household at 2181 draws/frame with 0 skipped
+and 0 dropped draws (`out/shots/house3_house.png` shows the club, the Sims, the HUD and a
+dialogue; `docs/status.md`, `docs/playtest.md`). Game speed is measured at 1.000 game-seconds per
+real second at 60, 144 and uncapped fps. What is still untested: an allocation-ordering defect
+in the Vulkan backend's `UploadAlloc`/`AllocDrawSet` (found by code reading, being fixed);
+Hor+ ultrawide is not implemented (pillarboxed, not widened); no controller has ever been
+plugged into the test machine (gamepad unexercised); saving/reloading through visible play is
+unproven; the remaining cheat rows and the per-call frame-rate consumers listed in
+`docs/frame-rate.md` are unproven in play; and the Windows build has never been
 compiled — no MSVC or Windows SDK here, so every `_WIN32` path is untested. There is no
 release to download. Full, evidence-cited state: `docs/status.md`.
 
@@ -45,7 +47,7 @@ The build is pinned to this exact XBE. A different region or revision needs its 
 | `config/game.toml` written by `xbe_symbols` | done — 194 of 242 `[symbols]` named, 48 at `0`, 12 of 12 `[data]` (recounted from the file; the 48 are accounted for in `docs/gap-analysis.md`) |
 | Recompilation and native build | done on Linux — 27,492 functions (`generated/game/x86_recomp_stats.txt`); Windows never compiled |
 | Kernel import coverage (`tools/kernel_coverage.py`) | done — 160 of 160 (`docs/kernel-coverage.md`) |
-| Boot, rendering, audio, saves | boot, intro, menus, Create-a-Sim and audio proven on Linux (`docs/status.md`, `docs/playtest.md`); household loads but presents black; save/reload through play **not proven** |
+| Boot, rendering, audio, saves | boot, intro, menus, Create-a-Sim, audio and a visible playable household proven on Linux (`docs/status.md`, `docs/playtest.md`, `out/shots/house3_house.png`); save/reload through visible play **not proven** |
 
 ## Controls
 
@@ -108,7 +110,7 @@ The F1 panel's **Cheats** section enters the game's own pad codes the game's own
 | Variable | Effect |
 | --- | --- |
 | `XBE_PERF=1` | per-second `perf:` log lines (fps, draws, upload, clears) mirroring the D3D12 backend (`sdk/runtime/core/diag.h`) |
-| `XBE_VK_DEBUG=1` | Vulkan validation layer (`VK_LAYER_KHRONOS_validation`) + debug-utils messenger (`sdk/runtime/gpu/vulkan.cpp`) |
+| `XBE_VK_DEBUG=1` | Vulkan validation layer (`VK_LAYER_KHRONOS_validation`) + debug-utils messenger (`sdk/runtime/gpu/vulkan.cpp`) — **⚠ WARNING: do not use on this machine. It hard-froze the whole machine twice (journal ends 06:47:47 in run `fix1` and 12:50:29 in run `house5`), each less than 0.5 s after a periodic frame capture, with no kernel message (the boot command line has `nowatchdog`). No run without the validation layer has ever frozen. Use logging and the capture dumps (`XBE_PERF`, `XBE_CAPTURE_DIR`, `XBE_VK_CAPTURE_EVERY`, `XBE_VK_DEBUG_DRAW`) instead.** |
 | `XBE_CAPTURE_DIR=<dir>` | where F3 frame captures and periodic front-buffer dumps are written (`sdk/runtime/core/diag.h`) |
 | `XBE_VK_CAPTURE_EVERY=<n>` | dump the guest front buffer every *n* presents into `XBE_CAPTURE_DIR` (`sdk/runtime/gpu/vulkan.cpp`) |
 | `XBE_MUTE=1` | silence SDL audio output for capture/benchmark runs (`sdk/runtime/audio/sdl_audio.cpp`) |

@@ -76,7 +76,7 @@ lead, **not proven**: no packet from these four callers has been decoded yet.
 
 ## 3. Unimplemented-opcode census
 
-`generated/game/x86_recomp_stats.txt`: 27,495 functions, 895,135 instructions, and 389
+`generated/game/x86_recomp_stats.txt`: 27,492 functions, 894,565 instructions, and 389
 unimplemented-opcode reports across 25 mnemonics:
 
 ```
@@ -124,6 +124,41 @@ The unproven leads, as listed there:
   re-hunt in play, where the camera object can be watched live; the `g_dt` published by the
   quantiser wrapper is already in place for whichever proves per-call.
 
-Until a run measures game seconds against wall seconds (the sibling verified its equivalent fix
-by summing the engine's own dt against the wall clock at 1.000 at a 60 fps cap, a raised cap and
-uncapped), the frame-step fix and every consumer above remain **not proven**.
+The frame-step fix itself is now measured in play: 1.000 game-seconds per real second at
+`fps_cap` 60, 144 and uncapped, against `SIMSBO_NO_STEP=1` controls of 1.112, 2.400 and
+~23.3 (`docs/status.md`, "Frame-step measurement"). The five consumers above remain
+**not proven** — the measurement proves the quantiser, not any per-call consumer.
+
+## 5. Indirect-call entry points the analysis missed
+
+`config/game.toml` `[functions]` carries two extra entry points the recompiler's
+analysis never reached:
+
+- **`0x2283CD`** — added during bring-up; without it that guest code was unreachable
+  to the dispatcher (`docs/status.md`, defect item 1).
+- **`0x66980`** — confirming a Sim aborted with `indirect call to 00066980 has no
+  recompiled function` at guest `0x13F8A7` (`out/shots/loop1.log`); it is a real
+  `__cdecl` callback stored as a function pointer at `0x696A1` and called
+  indirectly (`docs/playtest.md` §2 D1, commit `1672ac7`).
+
+Both were **indirect calls through stored function pointers**, which is why the
+analysis — which follows direct calls, code pointers and gaps between known
+functions — missed them. **More may exist**: any other callback stored and called
+the same way will only surface when play first reaches it, as a trap of the same
+shape. This is a standing risk for untested play paths, not a closed census.
+
+## 6. Operational hazards recorded here so they are not re-learned
+
+- **Vulkan validation layer hard-freezes this machine.** Both freezes (journal
+  ends 06:47:47 in run `fix1` and 12:50:29 in run `house5`) were runs with
+  `VK_LAYER_KHRONOS_validation` loaded, each less than 0.5 s after a periodic
+  frame capture, with no kernel message (the boot command line has
+  `nowatchdog`). No run without the layer has ever frozen. Do not set
+  `XBE_VK_DEBUG=1` here; the warning is also beside that variable in `README.md`.
+- **`tools/bringup_loop.sh` can report a false pass.** With `SIMSBO_AUTOSTART`
+  the blind Start/Up/A cycle never finishes Create-a-Sim name entry (it was
+  still typing a name at 89 s), so a trap point past name entry — as `0x66980`
+  was — is never reached unattended, and the loop reports "no missing entry
+  point, error lines: 0" having proven nothing about it (`docs/playtest.md` §2
+  D1). The loop only proves something when the drive is known to pass the trap
+  point; the same caveat is in the script's own header.

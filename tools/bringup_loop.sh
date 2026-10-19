@@ -7,6 +7,12 @@
 # appends it to config/game.toml's [functions] table and rebuilds, until the game stops asking or the
 # round limit is reached. Every round's log is kept under out/bringup/.
 #
+# CAVEAT — false pass: with SIMSBO_AUTOSTART the blind Start/Up/A cycle never finishes
+# Create-a-Sim name entry (it was still typing a name at 89 s; see docs/playtest.md D1), so a
+# trap point past name entry is never reached unattended and this loop can report "no missing
+# entry point, error lines: 0" having proven nothing about it. The loop only proves something
+# when the drive is known to pass the trap point.
+#
 #   tools/bringup_loop.sh [rounds] [seconds per run]
 set -euo pipefail
 cd "$(dirname "$0")/.."
