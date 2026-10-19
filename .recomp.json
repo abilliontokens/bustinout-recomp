@@ -20,11 +20,12 @@
     { "label": "SDK fork", "url": "https://github.com/abilliontokens/XboxXBERecomp" }
   ],
   "help": [
-    "Bootstrapping XDK 5558 signatures: this XBE was built with XDK 5558, but the SDK only ships sdk/xdk/5849",
-    "Naming the unmatched XDK functions in config/game.toml once xbe_symbols can run against 5558 signatures",
-    "Kernel import coverage for the 160 kernel thunk imports (tools/kernel_coverage.py)",
-    "Bringing the native Linux Vulkan and SDL3 backends up alongside the Windows Direct3D 12 and XAudio2 ones"
+    "Naming the remaining genuinely unmatched XDK names in config/game.toml (7 crt_* math entries; the other 41 names at 0 are for sections this XBE does not have) and the graded D3D candidates in docs/d3d-gap-functions.md",
+    "Play-testing past the intro on Linux: menus, gameplay, saving and reloading have never been reached on screen",
+    "Hor+ ultrawide on the Vulkan backend: today the picture is pillarboxed at the title's own 4:3, and widening every viewport/scissor/2-D placement by the offset is its own piece of work",
+    "Building and testing the Windows target (Direct3D 12 + XAudio2): it has never been compiled, as the development machine has no MSVC or Windows SDK",
+    "Measuring the frame-step fix against the wall clock at high frame rates, entering the cheats in play, and exercising the keyboard/pad bindings in this game"
   ],
   "tags": ["xbox", "static-recomp", "xbe", "xdk-5558", "d3d12", "vulkan", "sdl3"],
-  "notes": "In bring-up: the port has not booted yet. The retail USA XBE has been extracted and identified (title id 0x45410043, built 2003-11-13 with XDK 5558), and the repository, Windows and native Linux build scaffolding are in place. No gameplay, rendering, audio or save behaviour has been demonstrated yet; the immediate blocker is that the SDK ships XDK 5849 signatures while this game was built with XDK 5558."
+  "notes": "In bring-up, and it renders: the native Linux build (Vulkan + SDL3, no Wine) boots, mounts the disc, and plays the intro movie whole and correctly proportioned on a 3440x1440 display (pillarboxed at the game's own 4:3), with SDL3 audio and a measured 60 fps during video. The retail USA XBE (title id 0x45410043, built 2003-11-13 with XDK 5558) is extracted and identified, the SDK's XDK 5558 signature set was bootstrapped, config/game.toml names 194 of 242 symbols, and the XBE recompiles to 27,495 functions. Not proven: menus and gameplay past the intro, saving/reloading, the frame-step fix measured at high frame rates, cheats entered in play, the keyboard/pad bindings in this game, and Hor+ ultrawide (pillarboxed today). The Windows target has never been compiled. See docs/status.md for the evidence-cited state."
 }

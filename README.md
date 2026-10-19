@@ -5,11 +5,14 @@ produced by statically recompiling the game's x86 XBE with the
 [XboxXBERecomp SDK](https://github.com/TGP482/XboxXBERecomp) (vendored in `sdk/`).
 Windows uses Direct3D 12 and XAudio2; Linux is a native Vulkan and SDL3 build — no Wine.
 
-**Status: in bring-up. The port has not booted yet.** There is no release to download and no
-compatibility claim to make: the disc image has been extracted and the XBE identified, and the
-repository and build scaffolding below are in place, but recompilation, rendering, audio and
-saving have not been demonstrated. The immediate blocker is known — this game was built with
-XDK 5558, while the SDK only ships signatures for XDK 5849 (`sdk/xdk/5849/`).
+**Status: in bring-up — it renders the intro.** The native Linux build boots, mounts the disc,
+plays the intro movie whole and correctly proportioned on screen (pillarboxed at the game's
+own 4:3 on a wider display) with SDL3 audio, at a measured 60 fps during video. It is still
+bring-up: no menu or gameplay past the intro, save/reload, cheat, or keyboard/pad input has
+been demonstrated in play, Hor+ ultrawide is not implemented yet (the picture is pillarboxed,
+not widened), and the Windows build has never been compiled — this machine has no MSVC or
+Windows SDK, so every `_WIN32` path is untested. There is no release to download. Full,
+evidence-cited state: `docs/status.md`.
 
 This repository contains **no game code and no game assets**. It holds tooling, configuration and
 host-side glue only. You must supply your own legally acquired copy of the disc.
@@ -33,18 +36,18 @@ The build is pinned to this exact XBE. A different region or revision needs its 
 | --- | --- |
 | Disc image read and extracted (`tools/xiso_extract.py`) | done — the XBE is in `assets/` |
 | XBE identified and analysed (`tools/xbe_info.py`) | done — see the table above |
-| XDK build matched against the SDK's signature set | **blocked — XDK 5558, SDK ships 5849 only** |
+| XDK build matched against the SDK's signature set | done — `sdk/xdk/5558/` bootstrapped from 5849 (see `docs/status.md`) |
 | Repo scaffolded (this repository, Windows + Linux build files) | done |
-| `config/game.toml` written by `xbe_symbols` | not yet — needs 5558 signatures |
-| Recompilation and native build | not yet |
-| Kernel import coverage (`tools/kernel_coverage.py`) | not yet run against this XBE |
-| Boot, rendering, audio, saves | not yet demonstrated |
+| `config/game.toml` written by `xbe_symbols` | done — 194 of 242 `[symbols]` named, 48 at `0`, 12 of 12 `[data]` (recounted from the file; the 48 are accounted for in `docs/gap-analysis.md`) |
+| Recompilation and native build | done on Linux — 27,495 functions (`generated/game/x86_recomp_stats.txt`); Windows never compiled |
+| Kernel import coverage (`tools/kernel_coverage.py`) | done — 160 of 160 (`docs/kernel-coverage.md`) |
+| Boot, rendering, audio, saves | boot, intro rendering and audio proven on Linux (`docs/status.md`, `out/shots/good_default.png`); saves **not proven** |
 
 ## Controls
 
 The game itself only ever reads an Xbox pad, so the host translates keyboard and mouse into one
 on port 0, and controllers are picked up in the order they are plugged in. This is the host
-layer's mapping; it has not been exercised in this game yet.
+layer's mapping as `src/common/input_kbm.cpp` implements it; it has not been exercised in this game yet.
 
 | Keyboard / mouse | Pad | In game |
 | --- | --- | --- |
@@ -68,11 +71,43 @@ the keyboard and the mouse and the game sees neither.
 
 ## Settings, F1 / F2 overlay
 
-**F1** opens the host settings panel (display mode, resolution, aspect ratio, vsync, frame cap,
-render scale and related options) and **F2** the frame-time graph. Settings are kept in
-`settings.toml` beside the executable; the first run also creates `logs\` and `hdd\` (where
-saves go) beside it. These are SDK host-runtime surfaces — present in the code the port builds
-on, not yet proven in this game.
+**F1** opens the host settings panel (display mode, resolution, aspect ratio, ultrawide,
+vsync, frame cap, render scale, anisotropic filtering, HDR on Windows, and the **Cheats**
+section) and **F2** the frame-time graph. **F3** captures a frame when `XBE_CAPTURE_DIR` is
+set (see below). Settings are kept in `settings.toml` beside the executable
+(`src/common/game_info.cpp`: `.settings = "settings.toml"`); the first run also creates
+`logs/` and `hdd/` (where saves go) beside it. Keys read by
+`sdk/runtime/app/settings.cpp` (defaults from `sdk/runtime/app/app.h`):
+
+| Key | Values / default |
+| --- | --- |
+| `display_mode` | `fullscreen` / `borderless` / `windowed` (default `borderless`) |
+| `width`, `height` | output size in pixels; `0` = desktop mode (default) |
+| `render_percent` | render scale as a percent of the output height (default `100`) |
+| `fps_cap` | frame-rate cap; `0` = unlimited (default `60`) |
+| `vsync` | `true` / `false` (default `true`) |
+| `anisotropic_filtering` | `0` = as the game asks (default) |
+| `aspect_ratio` | `auto` (default), `4:3`, `16:9`, `16:10`, `21:9`, `32:9` |
+| `ultrawide` | `true` (default) / `false` — on Vulkan today this is read and logged but does not widen the frame target yet; the picture is pillarboxed at the chosen aspect (see **Status**) |
+| `hdr`, `hdr_paper_white`, `hdr_peak` | Windows/D3D12 only: `off` (default) / `auto` / `on`; paper white default `200`, peak `0` = display maximum |
+| `join_ip` | system-link co-op host address (empty by default) |
+
+The F1 panel's **Cheats** section enters the game's own pad codes the game's own way
+(`docs/cheats.md`); none has been entered in play yet. These are SDK host-runtime surfaces —
+present in the code the port builds on, not yet proven in this game beyond rendering the intro.
+
+## Diagnostic environment variables
+
+| Variable | Effect |
+| --- | --- |
+| `XBE_PERF=1` | per-second `perf:` log lines (fps, draws, upload, clears) mirroring the D3D12 backend (`sdk/runtime/core/diag.h`) |
+| `XBE_VK_DEBUG=1` | Vulkan validation layer (`VK_LAYER_KHRONOS_validation`) + debug-utils messenger (`sdk/runtime/gpu/vulkan.cpp`) |
+| `XBE_CAPTURE_DIR=<dir>` | where F3 frame captures and periodic front-buffer dumps are written (`sdk/runtime/core/diag.h`) |
+| `XBE_VK_CAPTURE_EVERY=<n>` | dump the guest front buffer every *n* presents into `XBE_CAPTURE_DIR` (`sdk/runtime/gpu/vulkan.cpp`) |
+| `XBE_MUTE=1` | silence SDL audio output for capture/benchmark runs (`sdk/runtime/audio/sdl_audio.cpp`) |
+| `SIMSBO_NO_STEP=1` | disable the frame-step fix in `src/game/hooks.cpp`: the stock 1/60 s quantiser runs untouched, so game speed is tied to frame rate as on the console at high fps |
+
+Unset is the normal path; the `SIMSBO_*` switch in `src/game/hooks.cpp` also treats `"0"` as off.
 
 ## Layout
 
@@ -115,7 +150,9 @@ You supply the game: the USA Xbox release, in one of two supported shapes:
    The SHA-1 must match the table above.
 4. Build for your platform:
 
-   **Windows** (Direct3D 12 / XAudio2):
+   **Windows** (Direct3D 12 / XAudio2) — **untested: never compiled.** No one has built or
+   run this target; this machine has no MSVC or Windows SDK (`docs/toolchain.md`), so treat
+   every Windows instruction below as the intended path, not a verified one:
    ```
    tools\env.bat
    build.bat
@@ -132,11 +169,12 @@ You supply the game: the USA Xbox release, in one of two supported shapes:
    `build.sh` does the same job with the `linux-release` preset and builds
    `SimsBustinOut` into `out/build/linux-release`. Pass a preset name to override it, e.g.
    `./build.sh linux-debug`. You need clang, cmake and ninja on `PATH`, plus SDL3 and the
-   Vulkan headers and loader for your distribution.
+   Vulkan headers and loader for your distribution. Run it from beside the binary with the
+   `assets/` rule above satisfied, e.g. `XBE_PERF=1 ./out/build/linux-release/SimsBustinOut`.
 
-   Either way, the first build is long: it compiles one C++ function per guest function. And
-   until XDK 5558 signatures exist, step 4 cannot get past writing `config/game.toml` — see
-   **Status** above.
+   Either way, the first build is long: it compiles one C++ function per guest function
+   (27,495 of them, `generated/game/x86_recomp_stats.txt`). `config/game.toml` is already
+   written and committed for this XBE, so step 4 does not need to regenerate it.
 
 ## Working on the port
 
