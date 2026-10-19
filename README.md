@@ -5,14 +5,18 @@ produced by statically recompiling the game's x86 XBE with the
 [XboxXBERecomp SDK](https://github.com/TGP482/XboxXBERecomp) (vendored in `sdk/`).
 Windows uses Direct3D 12 and XAudio2; Linux is a native Vulkan and SDL3 build — no Wine.
 
-**Status: in bring-up — it renders the intro.** The native Linux build boots, mounts the disc,
-plays the intro movie whole and correctly proportioned on screen (pillarboxed at the game's
-own 4:3 on a wider display) with SDL3 audio, at a measured 60 fps during video. It is still
-bring-up: no menu or gameplay past the intro, save/reload, cheat, or keyboard/pad input has
-been demonstrated in play, Hor+ ultrawide is not implemented yet (the picture is pillarboxed,
-not widened), and the Windows build has never been compiled — this machine has no MSVC or
-Windows SDK, so every `_WIN32` path is untested. There is no release to download. Full,
-evidence-cited state: `docs/status.md`.
+**Status: in progress — front end works, household presents black.** The native Linux build
+boots, plays the intro movie whole and correctly proportioned (pillarboxed at the game's own
+4:3 on a wider display) with SDL3 audio, and drives title → main menu → save select → name
+entry → Create-a-Sim → save → a loaded household at 2076–2178 draws/frame
+(`docs/playtest.md`). That household renders into the host target but **presents pure black**
+(open defect D2 in `docs/status.md`), and 159–267 draws/frame are dropped as `nopipeline`
+(D3), so visible gameplay is not there yet. Game speed is measured at 1.000 game-seconds per
+real second at 60, 144 and uncapped fps. Hor+ ultrawide is not implemented (pillarboxed, not
+widened), no controller has ever been plugged into the test machine (gamepad unexercised),
+saving/reloading through visible play is unproven, and the Windows build has never been
+compiled — no MSVC or Windows SDK here, so every `_WIN32` path is untested. There is no
+release to download. Full, evidence-cited state: `docs/status.md`.
 
 This repository contains **no game code and no game assets**. It holds tooling, configuration and
 host-side glue only. You must supply your own legally acquired copy of the disc.
@@ -39,15 +43,17 @@ The build is pinned to this exact XBE. A different region or revision needs its 
 | XDK build matched against the SDK's signature set | done — `sdk/xdk/5558/` bootstrapped from 5849 (see `docs/status.md`) |
 | Repo scaffolded (this repository, Windows + Linux build files) | done |
 | `config/game.toml` written by `xbe_symbols` | done — 194 of 242 `[symbols]` named, 48 at `0`, 12 of 12 `[data]` (recounted from the file; the 48 are accounted for in `docs/gap-analysis.md`) |
-| Recompilation and native build | done on Linux — 27,495 functions (`generated/game/x86_recomp_stats.txt`); Windows never compiled |
+| Recompilation and native build | done on Linux — 27,492 functions (`generated/game/x86_recomp_stats.txt`); Windows never compiled |
 | Kernel import coverage (`tools/kernel_coverage.py`) | done — 160 of 160 (`docs/kernel-coverage.md`) |
-| Boot, rendering, audio, saves | boot, intro rendering and audio proven on Linux (`docs/status.md`, `out/shots/good_default.png`); saves **not proven** |
+| Boot, rendering, audio, saves | boot, intro, menus, Create-a-Sim and audio proven on Linux (`docs/status.md`, `docs/playtest.md`); household loads but presents black; save/reload through play **not proven** |
 
 ## Controls
 
 The game itself only ever reads an Xbox pad, so the host translates keyboard and mouse into one
 on port 0, and controllers are picked up in the order they are plugged in. This is the host
-layer's mapping as `src/common/input_kbm.cpp` implements it; it has not been exercised in this game yet.
+layer's mapping as `src/common/input_kbm.cpp` implements it. In play, arrows, Space, Esc and
+Enter are screenshot-proven (`docs/playtest.md`); **no controller has ever been plugged into
+the test machine, so the gamepad path is unexercised.**
 
 | Keyboard / mouse | Pad | In game |
 | --- | --- | --- |
@@ -93,8 +99,9 @@ set (see below). Settings are kept in `settings.toml` beside the executable
 | `join_ip` | system-link co-op host address (empty by default) |
 
 The F1 panel's **Cheats** section enters the game's own pad codes the game's own way
-(`docs/cheats.md`); none has been entered in play yet. These are SDK host-runtime surfaces —
-present in the code the port builds on, not yet proven in this game beyond rendering the intro.
+(`docs/cheats.md`); Give Money has been entered in play through the game's own setter
+(log: `cheats: entered Give Money (code 1): on, the game's cheat mask is now 02`,
+`out/shots/ui2.log`). The other rows are not yet exercised in play.
 
 ## Diagnostic environment variables
 
@@ -106,6 +113,9 @@ present in the code the port builds on, not yet proven in this game beyond rende
 | `XBE_VK_CAPTURE_EVERY=<n>` | dump the guest front buffer every *n* presents into `XBE_CAPTURE_DIR` (`sdk/runtime/gpu/vulkan.cpp`) |
 | `XBE_MUTE=1` | silence SDL audio output for capture/benchmark runs (`sdk/runtime/audio/sdl_audio.cpp`) |
 | `SIMSBO_NO_STEP=1` | disable the frame-step fix in `src/game/hooks.cpp`: the stock 1/60 s quantiser runs untouched, so game speed is tied to frame rate as on the console at high fps |
+| `XBE_VK_DEBUG_DRAW=1` | full per-draw Vulkan dump (`sdk/runtime/gpu/vulkan.cpp`) |
+| `SIMSBO_AUTOSTART=1` | scripted pad self-test on port 0 (blind Start/Up/A cycle; `src/common/game_info.cpp`) — it never finishes name entry, so it cannot reach a household unattended |
+| `SIMSBO_STEP=<file>` | step mode: each token written to the file is one burst of pad-0 pulses (`src/common/game_info.cpp`) |
 
 Unset is the normal path; the `SIMSBO_*` switch in `src/game/hooks.cpp` also treats `"0"` as off.
 
@@ -160,7 +170,7 @@ You supply the game: the USA Xbox release, in one of two supported shapes:
    `build.bat` configures the `release` preset, builds `xbe_symbols`, writes
    `config/game.toml` from the XBE and the SDK's XDK signatures, then recompiles the XBE and
    builds `SimsBustinOut.exe` into `out/build/release`. `release.bat` packs that exe with the
-   README and third-party notices into `SimsBustinOut.zip`.
+   README, the SDK's `THIRD_PARTY.txt` and an empty `assets/` folder into `SimsBustinOut.zip`.
 
    **Linux** (native Vulkan + SDL3, no Wine):
    ```
@@ -171,9 +181,12 @@ You supply the game: the USA Xbox release, in one of two supported shapes:
    `./build.sh linux-debug`. You need clang, cmake and ninja on `PATH`, plus SDL3 and the
    Vulkan headers and loader for your distribution. Run it from beside the binary with the
    `assets/` rule above satisfied, e.g. `XBE_PERF=1 ./out/build/linux-release/SimsBustinOut`.
+   `./release.sh` packs that binary with the README, the SDK's `THIRD_PARTY.txt` and an
+   empty `assets/` folder into `SimsBustinOut-linux.tar.gz`; it refuses to package anything
+   from `assets/`, `generated/` or `out/` other than the executable.
 
    Either way, the first build is long: it compiles one C++ function per guest function
-   (27,495 of them, `generated/game/x86_recomp_stats.txt`). `config/game.toml` is already
+   (27,492 of them, `generated/game/x86_recomp_stats.txt`). `config/game.toml` is already
    written and committed for this XBE, so step 4 does not need to regenerate it.
 
 ## Working on the port

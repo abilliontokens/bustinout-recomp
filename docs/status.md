@@ -13,11 +13,12 @@ in play it is marked **not proven** — see the last section, which is the autho
 | XDK signature set | SDK shipped only `sdk/xdk/5849`; `sdk/xdk/5558/` was bootstrapped for this title (see below) |
 | `config/game.toml` | 194 of 242 `[symbols]` names at a non-zero address and 48 at `0`; 12 of 12 `[data]` symbols named (counted from the file itself; see "Gap analysis") |
 | Kernel imports | 160 xboxkrnl ordinals imported; 160 covered, 0 uncovered, after this port added six exports (`docs/kernel-coverage.md`) |
-| Recompilation | 27,495 functions, 895,135 instructions (`generated/game/x86_recomp_stats.txt`) |
+| Recompilation | 27,492 functions, 894,565 instructions (`generated/game/x86_recomp_stats.txt`) |
 | Native Linux build | Builds and links; verbose binary `out/build/linux-verbose/SimsBustinOut` (112,107,496 bytes in the recorded run, log line 3 of `out/build/linux-verbose/logs/simsbo_001.log`) |
 | Launch (Linux) | Boots, loads the game, opens its window, presents swaps, plays SDL3 audio and opens the intro XMV (`out/build/linux-verbose/logs/simsbo_001.log`) |
-| Picture on screen | **Proven for the intro movie.** `out/shots/good_default.png` (3440x1440) shows the Bustin' Out intro (air-hockey scene) whole, centred and correctly proportioned, pillarboxed with black bars left and right; `XBE_PERF=1` measures 60.0 fps with 1 draw and ~0.5–0.6 MB of texture upload per frame during video (`out/build/linux-verbose/logs/simsbo_002.log`, `perf:` lines) |
-| Gameplay | **Not proven.** No menu, gameplay, save or reload past the intro has been observed |
+| Picture on screen | **Proven for intro, menus and Create-a-Sim.** `out/shots/final_20s.png` (3440x1440) shows the intro whole and pillarboxed 4:3; menus/CAS screenshots in `docs/playtest.md` §1 |
+| Furthest state | **A loaded household at 2076–2178 draws/frame, 113k verts** (`docs/playtest.md` §1, `out/shots/loop2.log`/`loop3.log`) — it renders into the host target but **presents black** (open defect D2) |
+| Frame step ("60+ fps") | **Measured 1.000 game-seconds per real second** at `fps_cap` 60, 144 and uncapped; `SIMSBO_NO_STEP=1` controls 1.112, 2.400, ~23.3 (`out/shots/probe_cap*_*.log`, `out/shots/probe_uncapped_*.log`; table below) |
 
 ## The XDK 5558 bootstrap
 
@@ -180,6 +181,65 @@ SDL (4,500 buffers, peak 0.4922 — not silence).
    `vw = vh*aspect`, centred. It never stretches and never crops. *Evidence:* proof-run numbers
    `bbW_xbbH_ = 3440x1440`, target `1920x1440` (scale 3.000), source rect `(0,48 1920x1344)`,
    destination `(760,0 1920x1440)`; and `out/shots/good_default.png` itself.
+7. **Missing indirect-call entry point `0x66980` (D1, commit `1672ac7`).** Confirming a Sim
+   aborted with `indirect call to 00066980 has no recompiled function` at guest `0x13F8A7`
+   (`out/shots/loop1.log`); added `"0x66980" = ""` to `config/game.toml` `[functions]`. The same
+   path then loads the household trap-free (`out/shots/loop2.log`). Full account: `docs/playtest.md` §2 D1.
+8. **Supersampled back buffer ignored (commit `d61bc4a`).** The title's `MultiSampleType 0x2222`
+   device doubles its vertex positions; the host built 640x480, so only the top-left quarter
+   showed. `sdk/runtime/xdk/d3d8.cpp` now records SuperSampleX/Y and the backends scale by it;
+   the guest capture then matched `ffmpeg`'s decode of `sims_intro.xmv` frame 173 at 1.0x
+   (MSE 0.4, 52.0 dB) instead of 2.0x (`docs/movie-draw.md`). The `d3d12.cpp` counterpart is
+   written but never compiled.
+
+## Open renderer defects (from `docs/playtest.md` §2)
+
+- **D2 — household presents black (OPEN, localised).** F3 capture
+  `out/build/linux-verbose/cap_house/054826/frame.txt` lists 1912 draws, all to render target
+  `0283C000` after a black clear; `final.bmp` and `front_05700_host.bmp` from the same target
+  show the club scene (pixel mean 0.388), while the guest-size `ShrinkImage` dump reads exact
+  0.0 black. The F2 ImGui panel is visible in the same swapchain pass
+  (`out/shots/loop3_f2.png`), so swapchain/present/UI work; menus and Create-a-Sim present
+  through identical code. Gamma is excluded (`gamma=0` on every present line in
+  `out/shots/loop3.log`) and inline-push-buffer geometry corruption is excluded (geometry and
+  textures land correctly in the target). Prime suspect recorded there and in
+  `VulkanBackend::PrepareBlitSource` (`sdk/runtime/gpu/vulkan.cpp`): image layout / DCC
+  visibility of a heavily-drawn target across the draw→blit boundary on RADV.
+- **D3 — dropped draws (OPEN, distinct from D2).** 159–267 draws per frame are skipped with
+  `nopipeline` in the household (`XBE_PERF=1` lines in `out/shots/loop2.log`/`loop3.log`), and
+  some Sims render as black silhouettes inside an otherwise correct target.
+
+## Frame-step measurement
+
+Simulated game-seconds per real second, summed from the engine's own delta `[0x30AAD4]`
+against `steady_clock` in 5 s windows (verbose build, `vsync=false`; probe removed after
+measuring, `src/game/hooks.cpp` unchanged). Logs: `out/shots/probe_cap60_*.log`,
+`out/shots/probe_cap144_*.log`, `out/shots/probe_uncapped_*.log`.
+
+| `fps_cap` | Fix: fps | Fix: game s / real s | `SIMSBO_NO_STEP=1`: fps | Control: game s / real s |
+| --- | --- | --- | --- | --- |
+| 60 | 60.0–60.3 | **1.000** (first window 1.005) | 59.6–60.4 | 1.099–1.141 (cum. 1.112) |
+| 144 | 142.9–145.2 | **1.000** | 142.8–145.2 | **2.400** |
+| uncapped | 1292–1478 | **1.000** | 1424–1489 | ~23.3 (cum. 23.35) |
+
+The controls reproduce the defect signature (144/60 = 2.400; uncapped ≈ fps/60; even the
+60-cap control runs ~1.11x fast from the stock 3-frame average of tick-floored elapsed times).
+Static basis: `docs/frame-rate.md`; in-play account: `docs/playtest.md`.
+
+## F1 / F2 panels, keyboard, cheats (in play)
+
+- **F1 settings panel and F2 performance panel render and apply live** (synthetic keyboard
+  via `/dev/uinput`; `docs/playtest.md`). Aspect `auto`→`16:9` visibly shrinks the pillarbox
+  bars; render scale 100%→80% makes F2 read 1536x1152. F2 cross-checks the log in the same
+  run: panel 60.0 fps / 16.70 ms vs log 60.0 fps / 16.67 ms (`out/shots/loop3_f2.png`).
+  Cosmetic only: F2 row labels overlap their values at this UI scale.
+- **Keyboard as pad 0** (`src/common/input_kbm.cpp`): arrows move the menu highlight, Space
+  (A) accepts, Esc (B) goes back, Enter (Start) skips the title movie — all screenshot-proven
+  (`docs/playtest.md`). WASD moves nothing on these menus (they read the D-pad); Tab (Back)
+  had no visible effect at the top menu.
+- **Cheat entered through the game's own setter**: F1 → Give Money on, log line
+  `cheats: entered Give Money (code 1): on, the game's cheat mask is now 02`
+  (`out/shots/ui2.log`). Static table: `docs/cheats.md`.
 
 ## The picture
 
@@ -197,41 +257,46 @@ per frame` — exactly the shape the sibling port documents for video playback (
 quad, ~0.5 MB of texture upload a frame). SDL3 audio plays through the same run (the boot log's
 `dsound: stream … rate=48000` and `audio: sdl submitted=… peak=0.4922` lines, quoted above).
 
-What this does **not** prove: anything past the intro. No menu, gameplay, save or reload has
-been reached on screen — see the list below.
+Menus, name entry and Create-a-Sim also present correctly on screen (`docs/playtest.md` §1).
+What this does **not** prove: visible household gameplay — that scene loads and draws but
+presents black (D2 above).
 
 ## What is proven / what is not exercised
 
 **Proven** (observed in the files cited): the disc, XBE and XDK 5558 identity; the 5558 signature
 bootstrap and the current `config/game.toml` counts (194 of 242 `[symbols]` at a non-zero
 address, 48 at `0`, 12 of 12 `[data]`, recounted from the file); 160/160
-kernel imports; recompilation (27,495 functions, 895,135 instructions,
+kernel imports; recompilation (27,492 functions, 894,565 instructions,
 `generated/game/x86_recomp_stats.txt`); the Linux build; the boot sequence, swaps, device resets,
-disc reads, XMV open and SDL audio quoted above; the two bring-up symbol fixes, the dirty-disc
-fix, and the three renderer fixes (items 4–6); and the intro movie on screen
-(`out/shots/good_default.png`) at 60.0 fps with ~1 draw and ~0.5–0.6 MB of texture upload per
-frame (`out/build/linux-verbose/logs/simsbo_002.log`).
+disc reads, XMV open and SDL audio quoted above; the bring-up symbol fixes (`0x2283CD`,
+`D3DDevice_Reset`, D1 `0x66980`), the dirty-disc fix, and the renderer fixes (items 4–6 and 8);
+the intro movie, title, menus, save select, name entry and Create-a-Sim on screen
+(`docs/playtest.md` §1); a Sim saved and the household loaded at 2076–2178 draws/frame;
+the frame-step table above (1.000 at 60/144/uncapped, `out/shots/probe_*_*.log`);
+F1/F2 panels with live settings; keyboard-as-pad (arrows/Space/Esc/Enter); and Give Money
+entered through the game's own setter (`out/shots/ui2.log`).
 
-**Not proven:**
+**Not proven (unproven list):**
 
-- **Menus and gameplay past the intro** — never reached observably on screen.
-- **The frame-step fix measured against the wall clock at high frame rates** — the 1 ms-tick
-  quantiser and frame-tick wrappers in `src/game/hooks.cpp` are static analysis only
-  (`docs/frame-rate.md`: "None of this has been verified in play"); game-seconds vs
-  wall-seconds has not been measured at a 60 fps cap, a raised cap, or uncapped.
-- **The cheats entered in play** — the eight pad-code rows and their effects are read from the
-  image (`docs/cheats.md`) and cross-checked against public lists, but no code has been entered
-  in play, and the F1 panel's Cheats section has not been exercised in this game.
-- **The keyboard/pad bindings exercised in this game** — the mapping in `README.md` is the host
-  layer's as `src/common/input_kbm.cpp` implements it; it has not been exercised in this game.
-- **Hor+ ultrawide** — being worked on separately. Today the picture is pillarboxed at the
-  title's own 4:3 on a wider display: `VulkanBackend::WidenedGuestWidth()` in
-  `sdk/runtime/gpu/vulkan.cpp` returns `guestW_` unchanged, `Target::dx` is 0, and
-  `app::AspectWiden()` is read and logged but does not affect target allocation. A display
-  wider than the picture shows black bars, not more world.
-- **Saving and reloading** — never reached observably.
+- **The household scene on screen** — it presents pure black although the host render target
+  holds the scene (open defect D2, localised above; `docs/playtest.md` §2).
+- **159–267 `nopipeline` dropped draws per frame** in the household, with some Sims as black
+  silhouettes in the target (open defect D3, distinct from D2).
+- **A real controller / gamepad** — none has ever been plugged into this machine
+  (`/dev/input/by-id/` holds only keyboard and mice; no `controller … plugged in` log line);
+  the SDL gamepad path is reviewed, not exercised (`docs/playtest.md`).
+- **Hor+ ultrawide** — not implemented. Today the picture is pillarboxed at the title's own
+  4:3 on a wider display; a wider display shows black bars, not more world.
+- **Saving and reloading through play** — a Sim was saved and **Continue** reloads the
+  household loader, but playing, saving again and reloading through visible gameplay have
+  not been observed (blocked by D2).
+- **Visible gameplay generally** — motives/HUD, walking, camera and per-call frame-rate
+  consumers at high fps (need the visible scene; `docs/frame-rate.md`, `docs/playtest.md`).
+- **The gnome menu offering Give Money in the house**, and the other seven cheat rows in
+  play — only Give Money's setter entry is logged (`docs/cheats.md`).
 - **The Windows target** — Direct3D 12 + XAudio2; it has **never been compiled**, because this
-  Linux box has no MSVC or Windows SDK (`docs/toolchain.md`). All `_WIN32` paths are untested.
+  Linux box has no MSVC or Windows SDK (`docs/toolchain.md`, `docs/windows-target.md`).
+  All `_WIN32` paths are untested.
 
 ## Commands
 

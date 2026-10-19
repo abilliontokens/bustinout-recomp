@@ -10,22 +10,41 @@
   },
   "project": "The Sims: Bustin' Out Recompiled",
   "status": "in-progress",
-  "targets": ["Windows", "Linux"],
+  "targets": [
+    "Windows",
+    "Linux"
+  ],
   "toolchain": "XboxXBERecomp",
   "approach": "Static recompilation of the retail XBE to C++; XDK HLE with a Direct3D 12 renderer and XAudio2 on Windows, and a native Vulkan renderer with SDL3 on Linux (no Wine)",
   "maintainers": [
-    { "name": "abilliontokens", "link": "https://github.com/abilliontokens" }
+    {
+      "name": "abilliontokens",
+      "link": "https://github.com/abilliontokens"
+    }
   ],
   "links": [
-    { "label": "SDK fork", "url": "https://github.com/abilliontokens/XboxXBERecomp" }
+    {
+      "label": "SDK fork",
+      "url": "https://github.com/abilliontokens/XboxXBERecomp"
+    }
   ],
   "help": [
-    "Naming the remaining genuinely unmatched XDK names in config/game.toml (7 crt_* math entries; the other 41 names at 0 are for sections this XBE does not have) and the graded D3D candidates in docs/d3d-gap-functions.md",
-    "Play-testing past the intro on Linux: menus, gameplay, saving and reloading have never been reached on screen",
+    "Fix D2: the loaded household renders correctly into the host Vulkan target but presents black - localised in docs/playtest.md (1912 draws to target 0283C000, target BMPs show the scene, guest-size dump reads 0.0); prime suspect is image layout/DCC visibility in VulkanBackend::PrepareBlitSource on RADV",
+    "Fix D3: 159-267 nopipeline dropped draws per frame in the household, with some Sims as black silhouettes in an otherwise correct target",
+    "Play visible gameplay once D2 lands: motives/HUD, walking, camera, per-call frame-rate consumers at high fps, saving and reloading through play",
+    "Exercise a real controller: no gamepad has ever been plugged into the test machine, so the SDL gamepad path is unexercised",
     "Hor+ ultrawide on the Vulkan backend: today the picture is pillarboxed at the title's own 4:3, and widening every viewport/scissor/2-D placement by the offset is its own piece of work",
-    "Building and testing the Windows target (Direct3D 12 + XAudio2): it has never been compiled, as the development machine has no MSVC or Windows SDK",
-    "Measuring the frame-step fix against the wall clock at high frame rates, entering the cheats in play, and exercising the keyboard/pad bindings in this game"
+    "Build and test the Windows target (Direct3D 12 + XAudio2): it has never been compiled, as the development machine has no MSVC or Windows SDK",
+    "Name the remaining genuinely unmatched XDK names in config/game.toml (7 crt_* math entries; the other 41 names at 0 are for sections this XBE does not have) and the graded D3D candidates in docs/d3d-gap-functions.md"
   ],
-  "tags": ["xbox", "static-recomp", "xbe", "xdk-5558", "d3d12", "vulkan", "sdl3"],
-  "notes": "In bring-up, and it renders: the native Linux build (Vulkan + SDL3, no Wine) boots, mounts the disc, and plays the intro movie whole and correctly proportioned on a 3440x1440 display (pillarboxed at the game's own 4:3), with SDL3 audio and a measured 60 fps during video. The retail USA XBE (title id 0x45410043, built 2003-11-13 with XDK 5558) is extracted and identified, the SDK's XDK 5558 signature set was bootstrapped, config/game.toml names 194 of 242 symbols, and the XBE recompiles to 27,495 functions. Not proven: menus and gameplay past the intro, saving/reloading, the frame-step fix measured at high frame rates, cheats entered in play, the keyboard/pad bindings in this game, and Hor+ ultrawide (pillarboxed today). The Windows target has never been compiled. See docs/status.md for the evidence-cited state."
+  "tags": [
+    "xbox",
+    "static-recomp",
+    "xbe",
+    "xdk-5558",
+    "d3d12",
+    "vulkan",
+    "sdl3"
+  ],
+  "notes": "In progress: the native Linux build (Vulkan + SDL3, no Wine) boots and drives title, main menu, save select, name entry and Create-a-Sim on screen, saves a Sim, and loads a household at 2076-2178 draws/frame (docs/playtest.md) - but that household renders into the host target yet presents pure black (open defect D2, localised to the draw-to-blit path), and 159-267 draws/frame are dropped as nopipeline (D3). Game speed is measured at 1.000 game-seconds per real second at fps_cap 60, 144 and uncapped (SIMSBO_NO_STEP controls 1.112, 2.400, ~23.3). F1/F2 panels apply settings live, keyboard-as-pad is screenshot-proven, and Give Money was entered through the game's own setter (cheat mask 02). The retail USA XBE (title id 0x45410043, built 2003-11-13, XDK 5558) recompiles to 27,492 functions; config/game.toml names 194 of 242 symbols and 12 of 12 data symbols. Unproven: visible household gameplay, saving/reloading through play, Hor+ ultrawide (pillarboxed at the title's own 4:3 today), and any real gamepad - no controller has ever been plugged into the test machine. The Windows target (Direct3D 12 + XAudio2) has never been compiled: the development machine has no MSVC or Windows SDK, so all _WIN32 paths are untested."
 }
