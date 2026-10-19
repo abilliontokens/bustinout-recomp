@@ -32,13 +32,19 @@ fi
 export XBE_PERF=1 XBE_MUTE=1
 
 mkdir -p out/shots
-[ -e "$BUILD/assets" ] || ln -sfn ../../../assets "$BUILD/assets"
+# A packaged tree (release.sh) is given by absolute path and already carries its
+# own assets; only a relative in-tree build dir gets the symlink back to assets/.
+case "$BUILD" in
+    /*) ;;
+    *) [ -e "$BUILD/assets" ] || ln -sfn ../../../assets "$BUILD/assets" ;;
+esac
 
 STEP="$(mktemp /tmp/simsbo-step.XXXXXX)"
 export SIMSBO_STEP="$STEP"
 LOG="out/shots/${TAG}.log"
 : > "$LOG"
-"./$BUILD/SimsBustinOut" >> "$LOG" 2>&1 &
+# "./$BUILD/..." breaks the moment $BUILD is absolute: it becomes ".//tmp/...".
+"$(cd "$BUILD" && pwd)/SimsBustinOut" >> "$LOG" 2>&1 &
 PID=$!
 cleanup() { kill -KILL "$PID" 2>/dev/null; rm -f "$STEP"; }
 trap cleanup EXIT

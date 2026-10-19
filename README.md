@@ -5,22 +5,26 @@ produced by statically recompiling the game's x86 XBE with the
 [XboxXBERecomp SDK](https://github.com/abilliontokens/XboxXBERecomp) fork (vendored in `sdk/` as a submodule at SDK commit `c3d4335`).
 Windows uses Direct3D 12 and XAudio2; Linux is a native Vulkan and SDL3 build — no Wine.
 
-**Status: in progress — boots, renders, reaches playable gameplay.** The native Linux build
-boots, plays the intro movie whole and correctly proportioned (pillarboxed at the game's own
-4:3 on a wider display) with SDL3 audio, and drives title → main menu → save select → name
+**Status: playable on Linux.** The native Linux build boots, plays the intro movie whole and
+correctly proportioned with SDL3 audio, and drives title → main menu → save select → name
 entry → Create-a-Sim → save → a loaded, playable household at 2176 draws/frame with 0 skipped
 and 0 dropped draws on the final check of the committed build (`docs/black-scene.md`;
-`out/shots/house3_house.png`, from a 2181-draw run of the same scene, shows the club, the Sims,
-the HUD and a dialogue; `docs/status.md`, `docs/playtest.md`). Game speed is measured at 1.000
-game-seconds per real second at 60, 144 and uncapped fps. The Vulkan allocation-ordering
-defect in `UploadAlloc`/`AllocDrawSet` is fixed and proven (`stalealloc 0` over a full
-boot → household run, SDK `e809cd4`; `docs/black-scene.md`). What is still untested:
-Hor+ ultrawide is not implemented (pillarboxed, not widened; `docs/ultrawide.md`); no controller has ever been
-plugged into the test machine (gamepad unexercised); saving/reloading through visible play is
-unproven; the remaining cheat rows and the per-call frame-rate consumers listed in
-`docs/frame-rate.md` are unproven in play; and the Windows build has never been
-compiled — no MSVC or Windows SDK here, so every `_WIN32` path is untested. There is no
-release to download. Full, evidence-cited state: `docs/status.md`.
+`docs/status.md`, `docs/playtest.md`). Game speed is measured at 1.000 game-seconds per real
+second at 60, 144 and uncapped fps. The Vulkan allocation-ordering defect in
+`UploadAlloc`/`AllocDrawSet` is fixed and proven (`stalealloc 0` over a full boot → household
+run, SDK `e809cd4`; `docs/black-scene.md`).
+
+`aspect_ratio = "auto"` presents the aspect the title is actually projecting — 16:9 on any
+output 3:2 or wider, because the host answers the console's widescreen flag there, and 4:3 on
+a narrower one — so a 16:9 display fills edge to edge with no black bars. A display wider
+than 16:9 still gets that 16:9 picture pillarboxed: true Hor+ widening is written but gated
+off behind `SIMSBO_HORPLUS` and is **not** safe to enable yet (`docs/ultrawide.md` lists
+exactly what is still wrong with it).
+
+What is still untested: no controller has ever been plugged into the test machine (the gamepad
+path is unexercised); saving and reloading through visible play is unproven; and the remaining
+cheat rows and the per-call frame-rate consumers in `docs/frame-rate.md` are unproven in play.
+Full, evidence-cited state: `docs/status.md`.
 
 This repository contains **no game code and no game assets**. It holds tooling, configuration and
 host-side glue only. You must supply your own legally acquired copy of the disc.

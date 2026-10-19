@@ -1,69 +1,63 @@
 #!/usr/bin/env bash
-# The Sims: Bustin' Out - Linux release packager (Vulkan + SDL3, no Wine).
-# Mirrors release.bat: build if needed, then pack the executable with the
-# README, the SDK's THIRD_PARTY.txt and an empty assets folder.
+# Package the native Linux build for release. The Windows counterpart is release.bat.
+#
+#   tools: none beyond the build itself; run from the repo root
+#   out:   SimsBustinOut-linux-x64.tar.zst
+#
+# The binary needs a shader compiler at run time: the Vulkan backend translates the
+# title's shaders to SPIR-V through glslang (sdk/runtime/gpu/spirv.cpp), so glslang,
+# SPIRV and SPIRV-Tools are real runtime dependencies. Arch ships no static
+# SPIRV-Tools, so they cannot be linked in; they travel in lib/ beside the binary and
+# are found through an $ORIGIN rpath. Everything else the binary needs (SDL3, toml++,
+# Dear ImGui) is already static, and the Vulkan loader itself is expected from the
+# system like any other Vulkan application.
 set -euo pipefail
 
-PRESET="${1:-linux-release}"
-cd "$(dirname "$0")"
+BUILD="${1:-out/build/linux-release}"
+EXE="SimsBustinOut"
+STAGE="out/package/linux"
+TARBALL="$EXE-linux-x64.tar.zst"
 
-GAME_EXE="SimsBustinOut"
-OUT="out/build/${PRESET}"
-ARCHIVE="${GAME_EXE}-linux.tar.gz"
+[ -x "$BUILD/$EXE" ] || { echo "no $BUILD/$EXE - build first: cmake --build --preset linux-release"; exit 1; }
 
-echo
-echo "  The Sims: Bustin' Out - release (${PRESET})"
-echo "  ================================================"
-echo
+# Relink with an rpath that looks beside the binary. Only the link step reruns.
+# CMAKE_BUILD_RPATH, not a raw -Wl,-rpath in CMAKE_EXE_LINKER_FLAGS: Ninja treats
+# $ as its own escape character, so a literal $ORIGIN in a flag string reaches the
+# linker as an empty string and the rpath silently becomes "/lib", which resolves
+# against the system libraries and defeats the whole point. CMake's own rpath
+# variables are escaped by the generator, so $ORIGIN survives into the ELF.
+# CMAKE_EXE_LINKER_FLAGS carries --disable-new-dtags and is otherwise reset. Two
+# reasons. A previous configure of this build directory may have left a stale
+# -Wl,-rpath in it, and rpath entries concatenate, so it would sit in front of
+# $ORIGIN/lib and keep winning. And the default new-style RUNPATH applies ONLY to
+# the binary's own direct dependencies, not to theirs: libglslang pulls in
+# libSPIRV-Tools, and with RUNPATH that lookup skips $ORIGIN/lib and falls through
+# to the system copy, so the package breaks on any machine that lacks it.
+# --disable-new-dtags emits the old DT_RPATH, which the whole dependency chain
+# inherits.
+cmake --preset linux-release -DCMAKE_BUILD_RPATH='$ORIGIN/lib' \
+      -DCMAKE_EXE_LINKER_FLAGS=-Wl,--disable-new-dtags >/dev/null
+cmake --build --preset linux-release >/dev/null
 
-if [ ! -f "${OUT}/${GAME_EXE}" ]; then
-    ./build.sh "${PRESET}"
-fi
-# the configure step writes where the SDK is
-if [ ! -f "${OUT}/sdk_dir.txt" ]; then
-    cmake --preset "${PRESET}" > /dev/null
-fi
-if [ ! -f "${OUT}/sdk_dir.txt" ]; then
-    echo "${OUT}/sdk_dir.txt was not written, update the SDK." >&2
-    exit 1
-fi
-SDK="$(cat "${OUT}/sdk_dir.txt")"
+rm -rf "$STAGE"
+mkdir -p "$STAGE/lib" "$STAGE/assets"
+cp "$BUILD/$EXE" "$STAGE/"
 
-# Refuse to package game data or build output: only the executable may come
-# from assets/, generated/ or out/. The assets folder in the archive is empty.
-for forbidden in assets generated; do
-    if [ -e "${forbidden}" ] && [ -n "$(find "${forbidden}" -mindepth 1 -print -quit 2>/dev/null)" ]; then
-        : # present in the worktree is fine; it is simply never added below
-    fi
-done
-# Build the member list explicitly and check it before archiving.
-STAGE="$(mktemp -d)"
-trap 'rm -rf "${STAGE}"' EXIT
-mkdir -p "${STAGE}/release/assets"
-cp "${OUT}/${GAME_EXE}" "${STAGE}/release/${GAME_EXE}"
-cp README.md "${STAGE}/release/README.md"
-cp "${SDK}/THIRD_PARTY.txt" "${STAGE}/release/THIRD_PARTY.txt"
-# an empty assets folder beside the exe, where the game (files or .iso) goes
-touch "${STAGE}/release/assets/.keep"
+# every non-system shared object the binary resolves, by what it actually links
+ldd "$BUILD/$EXE" | awk '/=> \//{print $3}' |
+    grep -E 'glslang|SPIRV' |
+    while read -r so; do cp -L "$so" "$STAGE/lib/"; done
 
-MEMBERS="$(cd "${STAGE}/release" && find . -type f -printf '%P\n' | sort)"
-EXPECTED="$(printf '%s\n' "${GAME_EXE}" "README.md" "THIRD_PARTY.txt" "assets/.keep" | sort)"
-if [ "${MEMBERS}" != "${EXPECTED}" ]; then
-    echo "refusing to package unexpected files:" >&2
-    diff <(printf '%s\n' "${EXPECTED}") <(printf '%s\n' "${MEMBERS}") >&2 || true
-    exit 1
-fi
-case "${MEMBERS}" in
-    *assets/*[!/.keep]*|*generated/*|*out/*)
-        echo "refusing to package anything from assets/, generated/ or out/ other than the executable" >&2
-        exit 1
-        ;;
-esac
+cp README.md "$STAGE/"
+[ -f sdk/THIRD_PARTY.txt ] && cp sdk/THIRD_PARTY.txt "$STAGE/"
+cat > "$STAGE/assets/PUT_YOUR_GAME_HERE.txt" <<'EOF'
+Put your own legally acquired copy of The Sims: Bustin' Out (original Xbox, USA)
+in this folder: either the extracted disc files (including default.xbe) or the
+disc image itself as a .iso. The game ships no data of its own.
+EOF
 
-rm -f "${ARCHIVE}"
-tar -czf "${ARCHIVE}" -C "${STAGE}/release" .
-
-echo
-echo "  The Sims: Bustin' Out packaged."
-echo "  ${ARCHIVE}: ${GAME_EXE}, README.md, THIRD_PARTY.txt, assets/ (empty)"
-echo
+rm -f "$TARBALL"
+tar --zstd -C "$STAGE/.." -cf "$TARBALL" linux --transform "s,^linux,$EXE-linux-x64,"
+echo "wrote $TARBALL ($(du -h "$TARBALL" | cut -f1))"
+echo "contents:"
+tar --zstd -tf "$TARBALL" | sed 's/^/  /'
