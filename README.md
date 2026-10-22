@@ -200,9 +200,43 @@ You supply the game: the USA Xbox release, in one of two supported shapes:
    `./build.sh linux-debug`. You need clang, cmake and ninja on `PATH`, plus SDL3 and the
    Vulkan headers and loader for your distribution. Run it from beside the binary with the
    `assets/` rule above satisfied, e.g. `XBE_PERF=1 ./out/build/linux-release/SimsBustinOut`.
-   `./release.sh` packs that binary with the README, the SDK's `THIRD_PARTY.txt` and an
-   empty `assets/` folder into `SimsBustinOut-linux.tar.gz`; it refuses to package anything
-   from `assets/`, `generated/` or `out/` other than the executable.
+   `./release.sh` packs the executable, shader libraries, README, the SDK's
+   `THIRD_PARTY.txt` and an empty `assets/` folder into `SimsBustinOut-linux-x64.tar.zst`.
+   It does not package game assets or generated code.
+
+### Linux release compatibility
+
+The executable and **every bundled library** must support the target distribution's
+system libraries. On Ubuntu 26.04.1 (glibc 2.43), the v0.1.0 package's
+`libglslang.so.16` failed before startup because it required `GLIBC_2.44`.
+Rebuild incompatible dependencies against the target baseline; replacing the host's
+glibc is not a supported workaround. A local rebuild of glslang 16.6.0 must retain
+`ENABLE_HLSL=ON` and `ENABLE_OPT=ON` with its matching SPIRV-Tools dependencies.
+
+The SDK also supports Microsoft's DXC shader compiler, loaded at runtime. To include
+it, extract an [official Linux DXC release](https://github.com/microsoft/DirectXShaderCompiler/releases)
+and pass its root (containing `lib/` and the license files):
+
+```sh
+DXC_ROOT=/path/to/extracted-dxc MAX_GLIBC_VERSION=2.43 ./release.sh
+```
+
+This bundles `libdxcompiler.so`, `libdxil.so` and their licenses. DXC is discovered
+through the package's existing `$ORIGIN/lib` rpath; `ldd` alone cannot find this
+optional dependency because the SDK uses `dlopen`. An NVIDIA RTX 5070 on Ubuntu
+26.04.1 rendered the intro after the local library repair, adding DXC and regenerating
+the shader cache. This observation does not establish which compiler or cache change
+alone resolved the black screen, or prove full gameplay compatibility.
+
+Packaging now reports each ELF file's highest required glibc version. Setting
+`MAX_GLIBC_VERSION` rejects packages exceeding that baseline before creating an archive;
+without it the check reports requirements only. The check requires Python 3 and
+`readelf` (binutils). It checks glibc requirements, not Vulkan driver compatibility or
+other C++ runtime requirements.
+
+When changing shader compilers, close the game and move `shadercache/` aside so it can
+regenerate. Keep `hdd/`, which contains saved games. Shader cache keys currently do not
+include the compiler, so cached shaders may otherwise survive a compiler change.
 
    Either way, the first build is long: it compiles one C++ function per guest function
    (27,492 of them, `generated/game/x86_recomp_stats.txt`). `config/game.toml` is already

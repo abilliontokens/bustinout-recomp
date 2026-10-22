@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Package the native Linux build for release. The Windows counterpart is release.bat.
 #
-#   tools: none beyond the build itself; run from the repo root
+#   tools: build toolchain, Python 3, binutils (readelf), tar and zstd; run from the repo root
 #   out:   SimsBustinOut-linux-x64.tar.zst
 #
 # The binary needs a shader compiler at run time: the Vulkan backend translates the
-# title's shaders to SPIR-V through glslang (sdk/runtime/gpu/spirv.cpp), so glslang,
+# title's shaders to SPIR-V through DXC or glslang (sdk/runtime/gpu/spirv.cpp).
+# DXC_ROOT optionally supplies a DXC release; the linked fallback's glslang,
 # SPIRV and SPIRV-Tools are real runtime dependencies. Arch ships no static
 # SPIRV-Tools, so they cannot be linked in; they travel in lib/ beside the binary and
 # are found through an $ORIGIN rpath. Everything else the binary needs (SDL3, toml++,
@@ -17,6 +18,16 @@ BUILD="${1:-out/build/linux-release}"
 EXE="SimsBustinOut"
 STAGE="out/package/linux"
 TARBALL="$EXE-linux-x64.tar.zst"
+
+# DXC is loaded with dlopen, so ldd cannot discover it. When supplied, bundle
+# the official Linux distribution and its notices; do not silently fall back if
+# the caller provided an incomplete distribution.
+DXC_ROOT="${DXC_ROOT:-}"
+if [ -n "$DXC_ROOT" ]; then
+    for file in lib/libdxcompiler.so lib/libdxil.so LICENSE-MS.txt LICENSE-LLVM.txt; do
+        [ -f "$DXC_ROOT/$file" ] || { echo "missing $DXC_ROOT/$file" >&2; exit 1; }
+    done
+fi
 
 [ -x "$BUILD/$EXE" ] || { echo "no $BUILD/$EXE - build first: cmake --build --preset linux-release"; exit 1; }
 
@@ -47,6 +58,21 @@ cp "$BUILD/$EXE" "$STAGE/"
 ldd "$BUILD/$EXE" | awk '/=> \//{print $3}' |
     grep -E 'glslang|SPIRV' |
     while read -r so; do cp -L "$so" "$STAGE/lib/"; done
+
+if [ -n "$DXC_ROOT" ]; then
+    cp -L "$DXC_ROOT/lib/libdxcompiler.so" "$DXC_ROOT/lib/libdxil.so" "$STAGE/lib/"
+    cp "$DXC_ROOT/LICENSE-MS.txt" "$STAGE/lib/DXC-LICENSE-MS.txt"
+    cp "$DXC_ROOT/LICENSE-LLVM.txt" "$STAGE/lib/DXC-LICENSE-LLVM.txt"
+fi
+
+# Check the complete payload: a bundled library can need newer glibc than the
+# executable. Set MAX_GLIBC_VERSION to enforce a release compatibility target.
+# readelf inspects version requirements without executing the packaged code.
+GLIBC_CHECK_ARGS=("$STAGE")
+if [ -n "${MAX_GLIBC_VERSION:-}" ]; then
+    GLIBC_CHECK_ARGS+=(--max "$MAX_GLIBC_VERSION")
+fi
+python3 tools/check_linux_glibc.py "${GLIBC_CHECK_ARGS[@]}"
 
 cp README.md "$STAGE/"
 [ -f sdk/THIRD_PARTY.txt ] && cp sdk/THIRD_PARTY.txt "$STAGE/"
